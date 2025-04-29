@@ -1,0 +1,99 @@
+/* Estilos base para popups do Leaflet */
+
+/* Garantir que todos os popups tenham fundo escuro */
+.leaflet-popup-content-wrapper {
+  background-color: rgba(0, 0, 0, 0.85) !important;
+  color: white !important;
+  border-radius: 8px !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4) !important;
+  z-index: 1000 !important; /* Aumentar z-index para ficar acima das partículas */
+}
+
+.leaflet-popup-tip {
+  background-color: rgba(0, 0, 0, 0.85) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+  z-index: 1000 !important; /* Mesmo z-index do wrapper */
+}
+
+/* Garantir que o popup inteiro tenha z-index elevado */
+.leaflet-popup {
+  z-index: 1000 !important;
+}
+
+/* Garantir que o contêiner do popup tenha z-index elevado */
+.leaflet-popup-pane {
+  z-index: 700 !important; /* Valor padrão mais alto que o padrão do Leaflet */
+}
+
+/* Estilo base para textos dentro dos popups */
+.leaflet-popup-content {
+  color: white !important;
+  z-index: 1001 !important; /* Acima do wrapper */
+}
+
+/* Garantir visibilidade do botão de fechar */
+.leaflet-popup-close-button {
+  opacity: 1 !important;
+  z-index: 1002 !important; /* Acima de todo o resto */
+}
+
+/* Correções para o Leaflet no Next.js */
+
+/* Correção para o cursor grab não aparecer em alguns browsers */
+.leaflet-grab {
+  cursor: grab;
+}
+
+.leaflet-dragging .leaflet-grab {
+  cursor: grabbing;
+}
+
+/* Correção para imagens dos marcadores */
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+  max-width: none !important;
+}
+
+/* Ajustes para os controles de zoom */
+.leaflet-control-container {
+  z-index: 1000 !important;
+  position: relative;
+}
+
+.leaflet-control-zoom {
+  z-index: 999 !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+  background-color: rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(5px) !important;
+  margin: 15px !important;
+}
+
+.leaflet-control-zoom a {
+  background-color: transparent !important;
+  color: rgb(165, 243, 252) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+  transition: all 0.2s ease !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: rgba(6, 182, 212, 0.2) !important;
+  color: rgb(165, 243, 252) !important;
+}
+
+.leaflet-control-attribution {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(5px) !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  border-radius: 4px 0 0 0 !important;
+  border-top: 1px solid rgba(6, 182, 212, 0.2) !important;
+  border-left: 1px solid rgba(6, 182, 212, 0.2) !important;
+  padding: 0 8px !important;
+  font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+  color: rgba(6, 182, 212, 0.8) !important;
+} 

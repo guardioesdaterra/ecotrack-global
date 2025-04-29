@@ -1,0 +1,47 @@
+name: Deploy EcoTrack Map to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Configure environment variables
+        run: |
+          # Create .env file
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+          echo "API_URL=${{ secrets.API_URL }}" >> .env
+          echo "API_KEY=${{ secrets.API_KEY }}" >> .env
+      
+      - name: Replace placeholder values in HTML
+        run: |
+          # Replace placeholder values with actual secrets
+          sed -i "s|const SUPABASE_URL = '.*';|const SUPABASE_URL = '${{ secrets.SUPABASE_URL }}';|g" Project\ Grants/map-web/index.html
+          sed -i "s|const SUPABASE_ANON_KEY = '.*';|const SUPABASE_ANON_KEY = '${{ secrets.SUPABASE_ANON_KEY }}';|g" Project\ Grants/map-web/index.html
+          sed -i "s|const API_URL = '.*';|const API_URL = '${{ secrets.API_URL }}';|g" Project\ Grants/map-web/index.html
+          sed -i "s|const API_KEY = '.*';|const API_KEY = '${{ secrets.API_KEY }}';|g" Project\ Grants/map-web/index.html
+      
+      - name: Copy files to deployment directory
+        run: |
+          mkdir -p dist
+          cp -r Project\ Grants/map-web/* dist/
+      
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }} 

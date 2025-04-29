@@ -1,0 +1,378 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Cyberpunk neon variables */
+:root {
+  --neon-cyan: #06f7f7;
+  --neon-purple: #9452f5;
+  --neon-pink: #ff2a6d;
+  --neon-green: #0afc0a;
+  --neon-blue: #05d9fe;
+  --glow-intensity: 0.8;
+}
+
+/* Global animations for the project */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) translateX(0);
+  }
+  25% {
+    transform: translateY(-10px) translateX(10px);
+  }
+  50% {
+    transform: translateY(0) translateX(25px);
+  }
+  75% {
+    transform: translateY(10px) translateX(10px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes cyberscan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes spin-slow {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes float-slow {
+  0%, 100% { 
+    transform: translateY(0); 
+  }
+  50% { 
+    transform: translateY(-10px); 
+  }
+}
+
+@keyframes glow {
+  0%, 100% { 
+    box-shadow: 0 0 5px var(--neon-cyan), 0 0 10px var(--neon-purple);
+    border-color: var(--neon-cyan);
+  }
+  50% { 
+    box-shadow: 0 0 15px var(--neon-cyan), 0 0 20px var(--neon-purple);
+    border-color: var(--neon-purple);
+  }
+}
+
+/* Map animation effects */
+@keyframes flyToEffect {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(30px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2) translateY(-20px);
+  }
+}
+
+@keyframes windLine {
+  0% {
+    opacity: 0;
+    transform: translateX(-50px) rotate(var(--rotation, 0deg)) scale(0.5);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateX(0) rotate(var(--rotation, 0deg)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(50px) rotate(var(--rotation, 0deg)) scale(0.5);
+  }
+}
+
+@keyframes gridPulse {
+  0%, 100% {
+    opacity: 0.05;
+  }
+  50% {
+    opacity: 0.1;
+  }
+}
+
+/* Blob animations for background effects */
+@keyframes blob {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(20px, -15px) scale(1.05);
+  }
+  50% {
+    transform: translate(0, 10px) scale(0.95);
+  }
+  75% {
+    transform: translate(-20px, -10px) scale(1.05);
+  }
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+.animate-blob {
+  animation: blob 10s infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 6s linear infinite;
+}
+
+/* Guaranteeing overflows for effects */
+.leaflet-marker-icon {
+  overflow: visible !important;
+}
+
+.leaflet-marker-icon > div {
+  overflow: visible !important;
+}
+
+/* Make sure glow effects are visible */
+[class*="glow"],
+[class*="shadow"],
+[class*="blur"],
+*[style*="box-shadow"],
+*[style*="text-shadow"],
+*[style*="filter: blur"] {
+  overflow: visible !important;
+}
+
+/* Fix specific containers */
+.activity-marker-container,
+.activity-marker {
+  overflow: visible !important;
+}
+
+/* Cyberpunk effects */
+.neon-text {
+  text-shadow: 0 0 5px var(--neon-cyan), 
+              0 0 10px var(--neon-purple);
+}
+
+.neon-box {
+  box-shadow: 0 0 5px var(--neon-cyan),
+             0 0 10px var(--neon-purple);
+  overflow: visible;
+}
+
+/* Scanline effect for the cyberpunk feel */
+.scanline {
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0),
+    rgba(0, 0, 0, 0) 5px,
+    rgba(0, 0, 0, 0.03) 6px,
+    rgba(0, 0, 0, 0) 7px
+  );
+  animation: scanlines 8s linear infinite;
+  opacity: 0.2;
+}
+
+@keyframes scanlines {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 1000px;
+  }
+}
+
+/* Leaflet map styles - Cyberpunk Dark Mode */
+.dark-map {
+  filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(110%);
+}
+
+.dark-map .leaflet-tile-pane {
+  opacity: 0.5;
+}
+
+.leaflet-container {
+  background: #111;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Enhanced marker animation for hover effects */
+.activity-marker-hover {
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              box-shadow 0.3s ease-in-out;
+}
+
+.activity-marker-hover:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 15px var(--neon-cyan), 0 0 30px var(--neon-purple);
+}
+
+/* Force dark popup styles with high specificity */
+.leaflet-popup-content-wrapper,
+div.leaflet-popup-content-wrapper,
+.dark-popup .leaflet-popup-content-wrapper,
+.light-popup .leaflet-popup-content-wrapper {
+  background-color: rgba(10, 10, 10, 0.95) !important;
+  color: var(--neon-cyan) !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--neon-purple) !important;
+  box-shadow: 0 0 15px var(--neon-purple),
+              0 0 30px var(--neon-pink) !important;
+}
+
+.leaflet-popup-tip,
+div.leaflet-popup-tip,
+.dark-popup .leaflet-popup-tip,
+.light-popup .leaflet-popup-tip {
+  background-color: rgba(10, 10, 10, 0.95) !important;
+  border: 1px solid var(--neon-purple) !important;
+  box-shadow: 0 0 10px var(--neon-purple) !important;
+}
+
+/* Wind effect animation for flyTo */
+.wind-line {
+  animation: windLine 2s ease-in-out;
+  transform-origin: center;
+}
+
+/* Focus indicator pulse animation */
+.map-focus-indicator {
+  animation: pulse 2s infinite;
+}
+
+/* Enhance marker pulse effect */
+@keyframes markerPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 0.2;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0;
+  }
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
