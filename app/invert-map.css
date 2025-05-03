@@ -1,0 +1,52 @@
+/* Direct, clear map inversion styles */
+
+/* Invert map tiles with adjusted contrast and brightness */
+.leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) contrast(110%) brightness(95%) !important;
+}
+
+/* Ensure dark background */
+.leaflet-container {
+  background-color: #000 !important;
+}
+
+/* Map control styles for dark mode */
+.leaflet-control-zoom {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+}
+
+.leaflet-control-zoom a {
+  color: rgb(165, 243, 252) !important;
+  background-color: rgba(0, 0, 0, 0.6) !important;
+  border-color: rgba(6, 182, 212, 0.3) !important;
+}
+
+/* Dark styled attribution */
+.leaflet-control-attribution {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Popups in dark mode */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background-color: rgba(0, 0, 0, 0.85) !important;
+  color: white !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+}
+
+/* Ensure all markers, popups and controls appear in correct colors */
+.dark-map .leaflet-marker-pane,
+.dark-map .leaflet-popup-pane,
+.dark-map .leaflet-tooltip-pane,
+.dark-map .leaflet-overlay-pane,
+.dark-map .leaflet-control-container {
+  filter: none !important;
+}
+
+/* Ensure custom markers appear correctly */
+.dark-map .custom-map-marker,
+.dark-map .custom-map-marker-inner {
+  filter: none !important;
+} 

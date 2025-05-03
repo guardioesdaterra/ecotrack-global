@@ -1,0 +1,22 @@
+{
+  "name": "EcoTrack Global",
+  "short_name": "EcoTrack",
+  "description": "Track environmental initiatives worldwide",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/icon-192x140.png",
+      "sizes": "192x140",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-970x709.png",
+      "sizes": "970x709",
+      "type": "image/png"
+    }
+  ]
+}
