@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react"
 import { animate, createScope, createSpring } from "animejs"
 import { ArrowRight, Calendar, BarChart3, Globe, Leaf, MapPin, Plus, Shield, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createBrowserClient } from "@supabase/ssr"
 import type { Database } from "@/types/supabase"
 import { useRouter } from "next/navigation"
 import { useOverlay } from "@/contexts/overlay-context"
@@ -40,7 +40,10 @@ interface StatsType {
 }
 
 export default function MonitorPage() {
-  const supabase = createClientComponentClient<Database>()
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const { user } = useAuth() 
   const { showOverlay } = useOverlay()
   const [isLoading, setIsLoading] = useState(true)

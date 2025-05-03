@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createBrowserClient } from "@supabase/ssr"
 import type { Database } from "@/types/supabase"
 import { useAuth } from "@/contexts/auth-context"
 import { useOverlay } from "@/contexts/overlay-context"
@@ -38,7 +38,10 @@ interface Activity {
 export default function ViewActivity({ activityId }: ViewActivityProps) {
   const { hideOverlay, showOverlay } = useOverlay()
   const { user } = useAuth()
-  const supabase = createClientComponentClient<Database>()
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const containerRef = useRef<HTMLDivElement>(null)
   const animationScope = useRef<any>(null)
   

@@ -30,7 +30,7 @@ import { useOverlay } from "@/contexts/overlay-context"
 import { Badge, BadgeSpan } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAuth } from "@/contexts/auth-context"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createBrowserClient } from "@supabase/ssr"
 import type { Database } from "@/types/supabase"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -56,7 +56,10 @@ export default function SubmitForm() {
   const { hideOverlay } = useOverlay()
   const geolocation = useGeolocation()
   const { user } = useAuth() // Use the auth context to get the current user
-  const supabase = createClientComponentClient<Database>() // Create Supabase client
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  ) // Create Supabase client
   
   // Inicializar o estado com um log para debug
   console.log('Initializing form state');
