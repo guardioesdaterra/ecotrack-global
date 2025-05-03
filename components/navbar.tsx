@@ -839,14 +839,7 @@ export function Navbar() {
                 )}
               </div>
               
-              {/* Mobile menu button */}
-              <GradientButton 
-                variant="default"
-                size="sm" 
-                className="md:hidden rounded-full"
-                icon={isMobileMenuOpen ? <X className="h-4 w-4 text-cyan-400" /> : <Menu className="h-4 w-4" />}
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              />
+              {/* Mobile menu button removed per user request */}
             </div>
           </div>
         </div>
