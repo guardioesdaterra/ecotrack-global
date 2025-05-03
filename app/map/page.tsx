@@ -387,8 +387,16 @@ function MapPageContent() {
           console.error('Error fetching activities:', error)
           return []
         }
+
+        if (!data) {
+          console.error('No data returned from Supabase')
+          return []
+        }
         
-        if (error) throw error
+        if (error) {
+          console.error('Supabase query error:', error)
+          return []
+        }
 
         // Transform data for map component
         const transformedData = data?.map(item => ({
