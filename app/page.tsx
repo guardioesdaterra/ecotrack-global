@@ -62,7 +62,6 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true)
   const [lowPerformance, setLowPerformance] = useState(false)
   const [globeLoaded, setGlobeLoaded] = useState(false)
-  const [activeTab, setActiveTab] = useState("overview")
   const { performanceMode } = usePerformanceMode()
   
   // Prefetch profile page to make future navigation faster
@@ -351,15 +350,17 @@ export default function Home() {
         ))}
       </div>
       
-      {/* Globe Layer - properly positioned per reference image */}
-      <div className="fixed inset-0 w-full h-full z-[5] overflow-hidden">
-        {globeLoaded && !lowPerformance && (
-          <div className="absolute bottom-[25%] right-[10%] w-[30%] h-full pointer-events-none flex items-center justify-center">
-            <GlobeDemo />
-            <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black via-black/30 to-transparent"></div>
-          </div>
-        )}
-      </div>
+      {/* Globe Layer - desktop position */}
+      {!isMobile && (
+        <div className="fixed inset-0 w-full h-full z-[5] overflow-hidden">
+          {globeLoaded && !lowPerformance && (
+            <div className="absolute bottom-[25%] right-[10%] w-[30%] h-full pointer-events-none flex items-center justify-center">
+              <GlobeDemo />
+              <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black via-black/30 to-transparent"></div>
+            </div>
+          )}
+        </div>
+      )}
       
       {/* Background overlays - simplificadas para melhor desempenho */}
       {!lowPerformance && (
@@ -389,7 +390,7 @@ export default function Home() {
       
       {/* Background Beams - apenas em dispositivos potentes */}
       {isVisible && !lowPerformance && !isMobile && (
-        <BackgroundBeams reduced={true} />
+        <BackgroundBeams className="opacity-50" />
       )}
       
       {/* Main Content */}
@@ -418,27 +419,27 @@ export default function Home() {
           <div className="absolute -bottom-20 left-1/3 w-96 h-96 rounded-full bg-emerald-500/5 animate-blob animation-delay-4000 blur-3xl pointer-events-none"></div>
           
           {/* Main hero content container - adjusted position */}
-          <div className="container mx-auto px-4 md:left-[10%] h-full flex flex-col justify-center items-center md:items-start relative z-10">
+          <div className="container mx-auto px-4 md:left-[10%] h-full flex flex-col justify-center items-center relative z-10">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: "easeOut" }}
-              className="max-w-xl w-full md:w-[40%] pointer-events-auto py-10 md:py-0 pl-6 md:pl-10 pt-20 md:pt-32"
+              className="max-w-xl w-full md:w-[40%] pointer-events-auto py-10 md:py-0 text-center md:text-left pt-20 md:pt-32"
             >
               {/* System badge */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
-                className="inline-flex items-center gap-2 mb-3 md:mb-4 px-3 py-1 md:px-4 md:py-2 rounded-md bg-gradient-to-r from-cyan-900/40 to-purple-900/40 backdrop-blur-md border border-cyan-500/30"
+                className="inline-flex items-center gap-1.5 md:gap-2 mb-2 md:mb-4 px-2 py-1 md:px-4 md:py-2 rounded-md bg-gradient-to-r from-cyan-900/40 to-purple-900/40 backdrop-blur-md border border-cyan-500/30 mx-auto md:mx-0"
               >
-                <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></div>
-                <span className="text-xs md:text-sm font-medium text-cyan-300 tracking-wide font-mono">ECOTRACK SYSTEM v3.7</span>
+                <div className="h-1.5 w-1.5 md:h-2 md:w-2 rounded-full bg-cyan-400 animate-pulse"></div>
+                <span className="text-[10px] md:text-sm font-medium text-cyan-300 tracking-wide font-mono">ECOTRACK SYSTEM v3.7</span>
               </motion.div>
               
               {/* Main heading with smaller size */}
               <motion.h1 
-                className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 md:mb-8 leading-tight tracking-tight"
+                className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold mb-4 md:mb-8 leading-tight tracking-tight"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.3 }}
@@ -460,7 +461,7 @@ export default function Home() {
               
               {/* Description panel - smaller text */}
               <motion.div 
-                className="text-base md:text-lg text-gray-200 mb-10 md:mb-12 max-w-2xl backdrop-blur-md bg-black/30 p-5 md:p-6 rounded-md border border-white/10 border-l-cyan-500/50 border-t-purple-500/50 relative overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.2)]"
+                className="text-sm md:text-lg text-gray-200 mb-6 md:mb-12 max-w-2xl backdrop-blur-md bg-black/30 p-4 md:p-6 rounded-md border border-white/10 border-l-cyan-500/50 border-t-purple-500/50 relative overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.2)]"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5, delay: 0.5 }}
@@ -470,14 +471,14 @@ export default function Home() {
                 <div className="absolute -right-px top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-transparent to-cyan-500/30"></div>
                 <div className="absolute -bottom-px left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent"></div>
                 
-                <div className="flex flex-col gap-3">
-                  <p className="text-sm md:text-base">
+                <div className="flex flex-col gap-2 md:gap-3">
+                  <p className="text-xs md:text-base">
                     <span className="text-cyan-300 font-semibold">EcoTrack Global</span> is an advanced platform for monitoring and analyzing environmental initiatives worldwide with high-precision data visualization.
                   </p>
-                  <div className="flex items-center gap-2 text-xs md:text-sm text-emerald-400/90 mt-1 bg-emerald-950/30 px-3 py-2 rounded border border-emerald-500/20 relative">
-                    <Radar className="h-4 w-4 animate-pulse" />
+                  <div className="flex items-center gap-2 text-xs md:text-sm text-emerald-400/90 mt-1 bg-emerald-950/30 px-2 py-1.5 md:px-3 md:py-2 rounded border border-emerald-500/20 relative">
+                    <Radar className="h-3 w-3 md:h-4 md:w-4 animate-pulse" />
                     <span>Network of {activities.length} active environmental monitoring stations</span>
-                    <div className="absolute right-3 bottom-2 text-xs font-mono text-cyan-500/70 tracking-widest">
+                    <div className="absolute right-2 bottom-1 md:right-3 md:bottom-2 text-[10px] md:text-xs font-mono text-cyan-500/70 tracking-widest">
                       8 MAP 8
                     </div>
                   </div>
@@ -486,30 +487,47 @@ export default function Home() {
               
               {/* Action buttons - smaller size */}
               <motion.div 
-                className="flex flex-wrap gap-5 md:gap-6"
+                className="flex flex-wrap gap-5 md:gap-6 justify-center md:justify-start"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.6 }}
               >
                 <button 
                   onClick={() => showOverlay('submit')}
-                  className="h-9 px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-cyan-600 to-purple-700 hover:from-cyan-500 hover:to-purple-600 text-white font-medium tracking-wide"
+                  className="h-8 md:h-9 px-4 md:px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-cyan-600 to-purple-700 hover:from-cyan-500 hover:to-purple-600 text-white font-medium tracking-wide"
                 >
-                  <PlusCircle className="h-3.5 w-3.5 mr-2" />
+                  <PlusCircle className="h-3 w-3 md:h-3.5 md:w-3.5 mr-1.5 md:mr-2" />
                   SUBMIT ACTIVITY
                 </button>
                 <Link 
                   href="/map"
-                  className="h-9 px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-emerald-600 to-cyan-700 hover:from-emerald-500 hover:to-cyan-600 text-white font-medium tracking-wide"
+                  className="h-8 md:h-9 px-4 md:px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-emerald-600 to-cyan-700 hover:from-emerald-500 hover:to-cyan-600 text-white font-medium tracking-wide"
                 >
-                  <GlobeIcon className="h-3.5 w-3.5 mr-2" />
+                  <GlobeIcon className="h-3 w-3 md:h-3.5 md:w-3.5 mr-1.5 md:mr-2" />
                   EXPLORE MAP
                 </Link>
               </motion.div>
+              
+              {/* Mobile Globe - positioned below buttons */}
+              {isMobile && (
+                <motion.div 
+                  className="relative w-full h-56 mt-12 mb-8 pointer-events-none"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.7, delay: 0.8 }}
+                >
+                  {globeLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <GlobeDemo />
+                      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black via-transparent to-black"></div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
 
               {/* Scroll to explore text - repositioned */}
               <motion.div
-                className="fixed bottom-40 left-0 w-full flex justify-center items-center flex-col gap-1.5 text-center z-30"
+                className="fixed bottom-24 md:bottom-40 left-0 w-full flex justify-center items-center flex-col gap-1.5 text-center z-30"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5, delay: 0.7 }}
@@ -575,163 +593,7 @@ export default function Home() {
         </div>
         
         <div className="container mx-auto py-20 md:py-24 px-4">
-          <motion.div 
-            className="text-center max-w-3xl mx-auto mb-10"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 relative inline-block tracking-tight">
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500">
-                SYSTEM CAPABILITIES
-              </span>
-              <div className="absolute -bottom-2 left-0 right-0 h-[1px] bg-gradient-to-r from-cyan-500 via-purple-500 to-transparent"></div>
-            </h2>
-            <p className="text-gray-300 text-lg">
-              Advanced monitoring with real-time analysis and predictive capabilities
-            </p>
-          </motion.div>
-          
-          {/* Feature Tabs - cleaner layout */}
-          <div className="mb-16">
-            <div className="flex gap-2 md:gap-3 overflow-x-auto pb-2 md:justify-center mb-8 scrollbar-hide">
-              {[
-                { id: "overview", label: "NETWORK OVERVIEW", icon: <Eye className="h-4 w-4" /> },
-                { id: "monitor", label: "MONITORING SYSTEMS", icon: <Radar className="h-4 w-4" /> },
-                { id: "data", label: "DATA ANALYSIS", icon: <BarChart2 className="h-4 w-4" /> },
-                { id: "resources", label: "OPTIMIZATION", icon: <Zap className="h-4 w-4" /> }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 whitespace-nowrap px-3 py-2.5 rounded-md border transition-all duration-300 font-medium text-xs tracking-wide pointer-events-auto ${
-                    activeTab === tab.id
-                    ? "bg-gradient-to-r from-cyan-950 to-purple-950 text-cyan-300 border-cyan-500/40 shadow-md shadow-cyan-950/30"
-                    : "bg-black/40 border-gray-800/50 text-gray-400 hover:text-gray-200 hover:border-gray-600/50"
-                  }`}
-                >
-                  {tab.icon}
-                  <span className="hidden sm:inline">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-            
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeTab}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="grid md:grid-cols-3 gap-5 md:gap-6"
-              >
-                {activeTab === "overview" && (
-                  <>
-                    <CyberpunkFeatureCard 
-                      icon={<GlobeIcon className="h-7 w-7" />} 
-                      title="Global Network" 
-                      description="Worldwide monitoring system with real-time data collection and visualization technology."
-              color="cyan"
-              index={0}
-            />
-                    <CyberpunkFeatureCard 
-                      icon={<Shield className="h-7 w-7" />} 
-                      title="Conservation AI" 
-                      description="Predictive algorithms identify environmental patterns and recommend protection strategies."
-              color="purple"
-              index={1}
-            />
-                    <CyberpunkFeatureCard 
-                      icon={<Cpu className="h-7 w-7" />} 
-                      title="Edge Processing" 
-                      description="Distributed computing ensures data integrity even in remote regions with limited connectivity."
-              color="emerald"
-              index={2}
-            />
-                  </>
-                )}
-                
-                {activeTab === "monitor" && (
-                  <>
-                    <CyberpunkFeatureCard 
-                      icon={<Activity className="h-7 w-7" />} 
-                      title="Bio Scanning" 
-                      description="Advanced sensors track ecosystem health through multi-spectrum biodiversity analysis."
-                      color="emerald"
-                      index={0}
-                    />
-                    <CyberpunkFeatureCard 
-                      icon={<Radar className="h-7 w-7" />} 
-                      title="Orbital Data" 
-                      description="Satellite integration provides macro-level pattern recognition across continents."
-                      color="purple"
-                      index={1}
-                    />
-                    <CyberpunkFeatureCard 
-                      icon={<Hexagon className="h-7 w-7" />} 
-                      title="Mesh Network" 
-                      description="Self-healing grid maintains integrity through adaptive routing protocols."
-                      color="cyan"
-                      index={2}
-                    />
-                  </>
-                )}
-                
-                {activeTab === "data" && (
-                  <>
-                    <CyberpunkFeatureCard 
-                      icon={<BarChart2 className="h-7 w-7" />} 
-                      title="Quantum Analysis" 
-                      description="Advanced processing algorithms identify subtle environmental patterns and predict trends."
-                      color="purple"
-                      index={0}
-                    />
-                    <CyberpunkFeatureCard 
-                      icon={<Eye className="h-7 w-7" />} 
-                      title="Neural Visualization" 
-                      description="Advanced interfaces transform complex data into intuitive visual representations."
-                      color="cyan"
-                      index={1}
-                    />
-                    <CyberpunkFeatureCard 
-                      icon={<Leaf className="h-7 w-7" />} 
-                      title="Biosignal Tracking" 
-                      description="Microorganism monitoring provides early warnings for ecosystem shifts."
-                      color="emerald"
-                      index={2}
-                    />
-                  </>
-                )}
-                
-                {activeTab === "resources" && (
-                  <>
-                    <CyberpunkFeatureCard 
-                      icon={<Zap className="h-7 w-7" />} 
-                      title="Energy Optimization" 
-                      description="Self-sustaining stations utilizing renewable energy with intelligent power management."
-                      color="amber"
-                      index={0}
-                    />
-                    <CyberpunkFeatureCard 
-                      icon={<Wind className="h-7 w-7" />} 
-                      title="Climate Resilience" 
-                      description="Adaptive systems maintain operation in extreme weather and changing environments."
-                      color="cyan"
-                      index={1}
-                    />
-                    <CyberpunkFeatureCard 
-                      icon={<Battery className="h-7 w-7" />} 
-                      title="Resource Allocation" 
-                      description="AI-driven distribution ensures optimal deployment of conservation resources."
-                      color="emerald"
-                      index={2}
-                    />
-                  </>
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
+
         </div>
       </div>
       
