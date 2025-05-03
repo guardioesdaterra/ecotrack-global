@@ -5,7 +5,6 @@ import { Navbar } from "@/components/navbar"
 import { OverlayProvider } from "@/contexts/overlay-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import { Overlay } from "@/components/overlay"
-import { Sidebar } from "@/components/sidebar"
 import { EffectsProvider } from '@/lib/effects'
 import { GlobalEffects } from '@/components/global-effects'
 import { PerformanceProvider } from '@/hooks/use-performance-mode'
@@ -68,10 +67,9 @@ export default function RootLayout({ children }: {
               <AuthProvider>
                 <OverlayProvider>
                   <div className="flex min-h-screen h-full relative z-10">
-                    <Sidebar />
                     <div className="flex-1 relative w-full">
                       <Navbar />
-                      <main className="w-full h-screen pb-16 sm:pb-0">
+                      <main className="w-full h-screen pb-0">
                         <AppShell>
                           {children}
                         </AppShell>
