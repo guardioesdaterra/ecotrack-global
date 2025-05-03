@@ -373,10 +373,20 @@ function MapPageContent() {
     // Fetch activity data
     const fetchActivities = async () => {
       try {
+        if (!supabase) {
+          console.error('Supabase client is not initialized')
+          return []
+        }
+        
         const { data, error } = await supabase
           .from('ecotrack')
           .select('*')
           .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('Error fetching activities:', error)
+          return []
+        }
         
         if (error) throw error
 
