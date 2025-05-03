@@ -6,57 +6,54 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       ecotrack: {
         Row: {
-          id: string
+          id: number
           title: string
           type: string
-          description: string
-          country: string
-          city: string | null
-          street: string | null
-          email: string | null
-          hyperlink: string | null
-          responsible: string | null
+          description: string | null
           latitude: number | null
           longitude: number | null
-          photos: string | null
+          country: string | null
+          city: string | null
+          responsible: string | null
           created_at: string
+          direct_benefited?: number | null
+          indirect_benefited?: number | null
+          photos?: string[] | null
         }
         Insert: {
-          id?: string
+          id?: number
           title: string
           type: string
-          description: string
-          country: string
-          city?: string | null
-          street?: string | null
-          email?: string | null
-          hyperlink?: string | null
-          responsible?: string | null
+          description?: string | null
           latitude?: number | null
           longitude?: number | null
-          photos?: string | null
+          country?: string | null
+          city?: string | null
+          responsible?: string | null
           created_at?: string
+          direct_benefited?: number | null
+          indirect_benefited?: number | null
+          photos?: string[] | null
         }
         Update: {
-          id?: string
+          id?: number
           title?: string
           type?: string
-          description?: string
-          country?: string
-          city?: string | null
-          street?: string | null
-          email?: string | null
-          hyperlink?: string | null
-          responsible?: string | null
+          description?: string | null
           latitude?: number | null
           longitude?: number | null
-          photos?: string | null
+          country?: string | null
+          city?: string | null
+          responsible?: string | null
           created_at?: string
+          direct_benefited?: number | null
+          indirect_benefited?: number | null
+          photos?: string[] | null
         }
       }
     }

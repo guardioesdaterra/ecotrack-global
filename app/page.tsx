@@ -28,7 +28,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useOverlay } from "@/contexts/overlay-context"
-import { supabase, checkSupabaseConnection } from "@/lib/supabaseClient"
+import { supabase, checkSupabaseConnection, getSupabaseClient, fetchActivities } from "@/lib/supabaseClient"
 import { Activity as ActivityType } from "@/components/map-component"
 import dynamic from "next/dynamic"
 import { GradientButton } from "@/components/ui/gradient-button"
@@ -141,112 +141,55 @@ export default function Home() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
   
-  // Fetch activities data - memoized and optimized
+  // Fetch activities data with caching and persistence
   useEffect(() => {
-    async function fetchActivities() {
+    async function loadActivities() {
       if (!isLoading) return
       
       try {
-        // First, check Supabase connection health
-        const isConnected = await checkSupabaseConnection()
-        
-        if (!isConnected) {
-          console.error("Supabase connection is not healthy")
-          throw new Error("Database connection is not healthy")
+        // Skip data fetching during prerendering
+        if (typeof window === 'undefined') {
+          setActivities([]);
+          setIsLoading(false);
+          return;
         }
         
-        console.log("Fetching activities from Supabase...")
+        console.log("Loading activities from cache or Supabase...");
         
-        // Try with a simpler query first to test connection
-        const { data, error } = await supabase
-          .from('ecotrack')
-          .select('*')
-          .limit(5)
+        // Use the new fetchActivities function with caching
+        const data = await fetchActivities(performanceMode === 'low' ? 20 : 50);
         
-        if (error) {
-          console.error("Supabase query error:", error.message || JSON.stringify(error))
-          throw error
-        }
-        
-        if (data && data.length > 0) {
-          console.log(`Successfully fetched ${data.length} activities`)
-          
-          // Now fetch full data with pagination for better performance
-          const { data: fullData, error: fullError } = await supabase
-            .from('ecotrack')
-            .select('*')
-            .limit(performanceMode === 'low' ? 20 : 50)
-            .order('created_at', { ascending: false })
-          
-          if (fullError) {
-            console.error("Full query error:", fullError.message || JSON.stringify(fullError))
-            // Continue with the limited data instead of throwing
-          }
-          
-          // Use the more complete data if available, otherwise use limited data
-          const processData = fullData || data
-          
-          // Transform database data to match activity interface
-          const activitiesData = processData.map(item => ({
-            id: item.id ? parseInt(item.id.toString()) : Math.floor(Math.random() * 10000),
-            title: item.title || 'Untitled Activity',
-            type: item.type || 'other',
+        // Transform database data to match activity interface
+        const activitiesData = data.map(item => {
+          // Convert database schema to Activity type
+          const activity: ActivityType = {
+            id: item.id,
+            title: item.title,
+            type: item.type,
             description: item.description || '',
-            lat: item.latitude || item.lat || 0,
-            lng: item.longitude || item.lng || 0,
+            lat: item.latitude || 0,
+            lng: item.longitude || 0,
             country: item.country || 'Unknown',
             adress: item.city ? `${item.city}, ${item.country || ''}` : undefined,
-            responsible: item.responsible || 'Unknown'
-          }))
-          
-          setActivities(activitiesData)
-        } else {
-          console.log("No activities found or empty response")
-          // Use fallback mock data in development
-          setActivities([])
-        }
+            responsible: item.responsible || 'Unknown',
+            direct_benefited: item.direct_benefited === null ? undefined : item.direct_benefited,
+            indirect_benefited: item.indirect_benefited === null ? undefined : item.indirect_benefited,
+            photos: item.photos === null ? undefined : item.photos
+          };
+          return activity;
+        });
+        
+        setActivities(activitiesData);
       } catch (error) {
-        console.error("Error fetching activities:", error instanceof Error ? error.message : JSON.stringify(error))
-        
-        // Fallback to empty activities array on error
-        setActivities([])
-        
-        // Optional: Show some mock data in development
-        if (process.env.NODE_ENV === 'development') {
-          console.log("Using mock data for development")
-          const mockActivities = [
-            {
-              id: 1001,
-              title: 'Reforestation Project', 
-              type: 'reforestation',
-              description: 'Sample reforestation project created as fallback data.',
-              lat: 40.7128,
-              lng: -74.006,
-              country: 'United States',
-              adress: 'New York, United States',
-              responsible: 'EcoTrack Team'
-            },
-            {
-              id: 1002,
-              title: 'Beach Cleanup', 
-              type: 'clean-up',
-              description: 'Sample beach cleanup created as fallback data.',
-              lat: 34.0522,
-              lng: -118.2437,
-              country: 'United States',
-              adress: 'Los Angeles, United States',
-              responsible: 'EcoTrack Team'
-            }
-          ]
-          setActivities(mockActivities)
-        }
+        console.error("Error loading activities:", error instanceof Error ? error.message : JSON.stringify(error));
+        setActivities([]);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
     }
     
-    fetchActivities()
-  }, [isLoading, performanceMode])
+    loadActivities();
+  }, [isLoading, performanceMode]);
   
   // Generate circuit pattern data lines - optimized and memoized
   const circuitLines = useMemo(() => {
@@ -350,18 +293,6 @@ export default function Home() {
         ))}
       </div>
       
-      {/* Globe Layer - desktop position */}
-      {!isMobile && (
-        <div className="fixed inset-0 w-full h-full z-[5] overflow-hidden">
-          {globeLoaded && !lowPerformance && (
-            <div className="absolute bottom-[25%] right-[10%] w-[30%] h-full pointer-events-none flex items-center justify-center">
-              <GlobeDemo />
-              <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black via-black/30 to-transparent"></div>
-            </div>
-          )}
-        </div>
-      )}
-      
       {/* Background overlays - simplificadas para melhor desempenho */}
       {!lowPerformance && (
         <div 
@@ -398,7 +329,7 @@ export default function Home() {
         {/* Hero Section */}
         <div 
           ref={heroRef}
-          className="relative min-h-screen w-full overflow-hidden"
+          className="relative min-h-screen w-full overflow-visible"
             style={{
             perspective: "1200px"
           }}
@@ -419,12 +350,12 @@ export default function Home() {
           <div className="absolute -bottom-20 left-1/3 w-96 h-96 rounded-full bg-emerald-500/5 animate-blob animation-delay-4000 blur-3xl pointer-events-none"></div>
           
           {/* Main hero content container - adjusted position */}
-          <div className="container mx-auto px-4 md:left-[10%] h-full flex flex-col justify-center items-center relative z-10">
+          <div className="container mx-auto px-4 h-full flex flex-col md:flex-row justify-center md:justify-between items-center relative z-10 overflow-visible pt-8 md:pt-16">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: "easeOut" }}
-              className="max-w-xl w-full md:w-[40%] pointer-events-auto py-10 md:py-0 text-center md:text-left pt-20 md:pt-32"
+              className="max-w-xl w-full md:w-[52%] md:mr-0 pointer-events-auto py-10 md:py-0 text-center md:text-left pt-16 md:pt-16"
             >
               {/* System badge */}
               <motion.div
@@ -461,7 +392,7 @@ export default function Home() {
               
               {/* Description panel - smaller text */}
               <motion.div 
-                className="text-sm md:text-lg text-gray-200 mb-6 md:mb-12 max-w-2xl backdrop-blur-md bg-black/30 p-4 md:p-6 rounded-md border border-white/10 border-l-cyan-500/50 border-t-purple-500/50 relative overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.2)]"
+                className="text-sm md:text-lg text-gray-200 mb-8 md:mb-10 max-w-2xl backdrop-blur-md bg-black/30 p-4 md:p-6 rounded-md border border-white/10 border-l-cyan-500/50 border-t-purple-500/50 relative overflow-hidden shadow-[0_0_20px_rgba(6,182,212,0.2)] z-30"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5, delay: 0.5 }}
@@ -478,30 +409,33 @@ export default function Home() {
                   <div className="flex items-center gap-2 text-xs md:text-sm text-emerald-400/90 mt-1 bg-emerald-950/30 px-2 py-1.5 md:px-3 md:py-2 rounded border border-emerald-500/20 relative">
                     <Radar className="h-3 w-3 md:h-4 md:w-4 animate-pulse" />
                     <span>Network of {activities.length} active environmental monitoring stations</span>
-                    <div className="absolute right-2 bottom-1 md:right-3 md:bottom-2 text-[10px] md:text-xs font-mono text-cyan-500/70 tracking-widest">
-                      8 MAP 8
-                    </div>
+
                   </div>
                 </div>
               </motion.div>
               
               {/* Action buttons - smaller size */}
               <motion.div 
-                className="flex flex-wrap gap-5 md:gap-6 justify-center md:justify-start"
+                className="flex flex-wrap gap-5 md:gap-6 justify-center md:justify-start relative z-30"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.6 }}
+                style={{
+                  marginBottom: isMobile ? "0px" : undefined,
+                  position: "relative",
+                  zIndex: 35
+                }}
               >
                 <button 
                   onClick={() => showOverlay('submit')}
-                  className="h-8 md:h-9 px-4 md:px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-cyan-600 to-purple-700 hover:from-cyan-500 hover:to-purple-600 text-white font-medium tracking-wide"
+                  className="h-8 md:h-9 px-4 md:px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-cyan-600 to-purple-700 hover:from-cyan-500 hover:to-purple-600 text-white font-medium tracking-wide relative z-35"
                 >
                   <PlusCircle className="h-3 w-3 md:h-3.5 md:w-3.5 mr-1.5 md:mr-2" />
                   SUBMIT ACTIVITY
                 </button>
                 <Link 
                   href="/map"
-                  className="h-8 md:h-9 px-4 md:px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-emerald-600 to-cyan-700 hover:from-emerald-500 hover:to-cyan-600 text-white font-medium tracking-wide"
+                  className="h-8 md:h-9 px-4 md:px-6 text-xs rounded-md flex items-center justify-center bg-gradient-to-r from-emerald-600 to-cyan-700 hover:from-emerald-500 hover:to-cyan-600 text-white font-medium tracking-wide relative z-35"
                 >
                   <GlobeIcon className="h-3 w-3 md:h-3.5 md:w-3.5 mr-1.5 md:mr-2" />
                   EXPLORE MAP
@@ -511,23 +445,60 @@ export default function Home() {
               {/* Mobile Globe - positioned below buttons */}
               {isMobile && (
                 <motion.div 
-                  className="relative w-full h-56 mt-12 mb-8 pointer-events-none"
+                  className="relative w-full h-64 mt-0 mb-8 pointer-events-none overflow-visible z-25"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.7, delay: 0.8 }}
+                  style={{
+                    marginTop: "50px",
+                    position: "relative"
+                  }}
                 >
                   {globeLoaded && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <GlobeDemo />
-                      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black via-transparent to-black"></div>
+                    <div className="absolute inset-0 flex items-center justify-center overflow-visible" 
+                         style={{
+                           top: "0px"
+                         }}>
+                      <div className="w-[140%] h-[140%] relative">
+                        <GlobeDemo />
+                      </div>
                     </div>
                   )}
                 </motion.div>
               )}
+            </motion.div>
+            
+            {/* Desktop Globe - positioned to the right */}
+            {!isMobile && (
+              <motion.div 
+                className="hidden md:block w-[45%] h-[650px] pointer-events-none relative overflow-visible"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.7, delay: 0.8 }}
+                style={{
+                  position: "relative",
+                  top: "120px",
+                  right: "-10px",
+                  left: "-60px",
+                  marginLeft: "-30px",
+                  transform: "scale(1.1)",
+                  zIndex: 25
+                }}
+              >
+                {globeLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center overflow-visible">
+                    <div className="w-[130%] h-[130%] relative">
+                      <GlobeDemo />
+                      <div className="absolute inset-0 pointer-events-none bg-transparent"></div>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
 
               {/* Scroll to explore text - repositioned */}
               <motion.div
-                className="fixed bottom-24 md:bottom-40 left-0 w-full flex justify-center items-center flex-col gap-1.5 text-center z-30"
+                className="fixed bottom-16 md:bottom-16 left-0 w-full flex justify-center items-center flex-col gap-1.5 text-center z-30"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5, delay: 0.7 }}
@@ -541,60 +512,13 @@ export default function Home() {
                   transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                 />
               </motion.div>
-            </motion.div>
           </div>
         </div>
       </div>
       
-      {/* Features Tabs Section - more refined and professional */}
-      <div className="relative z-20 bg-gradient-to-b from-black via-gray-950 to-black pointer-events-auto">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {/* Glowing divider line */}
-          <div 
-            className="absolute -top-px left-0 right-0 h-[1px]"
-            style={{
-              background: 'linear-gradient(90deg, transparent 0%, rgba(6, 182, 212, 0.6) 50%, transparent 100%)'
-            }}
-          ></div>
-          
-          {/* Data stream effect - reduced for performance */}
-          <div className="absolute inset-0 opacity-10">
-            {Array.from({ length: lowPerformance ? 3 : 6 }).map((_, i) => {
-              // Usar valores fixos para evitar problemas de hidratação
-              const positions = [10, 25, 40, 55, 70, 85];
-              const heights = [25, 30, 35, 40, 45, 28];
-              const delays = [0.5, 1, 1.5, 2, 2.5, 3];
-              const durations = [4, 5, 6, 4.5, 5.5, 6.5];
-              
-              return (
-                <motion.div
-                  key={i}
-                  className="absolute w-[1px] bg-cyan-500"
-            style={{
-                    height: `${heights[i % heights.length]}%`,
-                    left: `${positions[i % positions.length]}%`,
-                    top: `-5%`,
-                    opacity: 0.7
-                  }}
-                  animate={{
-                    y: ['0%', '100%'],
-                    opacity: [0, 0.7, 0]
-                  }}
-                  transition={{
-                    duration: durations[i % durations.length],
-                    repeat: Infinity,
-                    delay: delays[i % delays.length],
-                    ease: "linear"
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
-        
-        <div className="container mx-auto py-20 md:py-24 px-4">
-
-        </div>
+      {/* Features Gallery -  refined and professional */}
+      <div className="photo gallery">
+       
       </div>
       
       {/* Call-to-Action Section - optimized with cleaner design */}
@@ -740,7 +664,7 @@ export default function Home() {
                 <div className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-600 tracking-wide">
                   ECOTRACK GLOBAL
                 </div>
-                <div className="text-[10px] text-gray-500 font-mono tracking-wide">MONITORING SYSTEM v3.7</div>
+                <div className="text-[10px] text-gray-500 font-mono tracking-wide">MONITORING SYSTEM v1.9</div>
               </div>
             </div>
             
