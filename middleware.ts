@@ -1,18 +1,8 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import type { Database } from '@/types/supabase'
+import { type NextRequest } from 'next/server'
+import { updateSession } from '@/utils/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next()
-  
-  // Create a Supabase client configured to use cookies
-  const supabase = createMiddlewareClient<Database>({ req: request, res: response })
-  
-  // Refresh session if expired - required for Server Components
-  await supabase.auth.getSession()
-  
-  return response
+  return await updateSession(request)
 }
 
 // Match all routes except static files, API routes, and _next

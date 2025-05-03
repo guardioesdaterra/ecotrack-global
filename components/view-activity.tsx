@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { createBrowserClient } from "@supabase/ssr"
 import type { Database } from "@/types/supabase"
 import { useAuth } from "@/contexts/auth-context"
 import { useOverlay } from "@/contexts/overlay-context"
@@ -10,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
 import Image from "next/image"
 import { animate, createScope } from "animejs"
+import { createClient } from "@/utils/supabase/client"
 
 interface ViewActivityProps {
   activityId: string;
@@ -38,7 +38,7 @@ interface Activity {
 export default function ViewActivity({ activityId }: ViewActivityProps) {
   const { hideOverlay, showOverlay } = useOverlay()
   const { user } = useAuth()
-  const supabase = createBrowserClient<Database>(
+  const supabase = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )

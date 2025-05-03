@@ -33,7 +33,7 @@ import { useOverlay } from "@/contexts/overlay-context"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAuth } from "@/contexts/auth-context"
-import { createBrowserClient } from "@supabase/ssr"
+import { createClient } from "@/utils/supabase/client"
 import type { Database } from "@/types/supabase"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -78,10 +78,7 @@ export default function EditForm({ activityId }: EditFormProps) {
   const { hideOverlay } = useOverlay()
   const geolocation = useGeolocation()
   const { user } = useAuth()
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
   const formRef = useRef(null)
   const animationScope = useRef<any>(null)
   
@@ -199,7 +196,7 @@ export default function EditForm({ activityId }: EditFormProps) {
       console.log(`Fetching activity data for ID: ${activityId}`);
       
       // Create a fresh client for this request
-      const supabaseClient = createBrowserClient<Database>();
+      const supabaseClient = createClient();
       
       const { data, error } = await supabaseClient
         .from('ecotrack')
