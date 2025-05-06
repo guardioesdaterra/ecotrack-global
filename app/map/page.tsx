@@ -482,17 +482,6 @@ function MapPageContent() {
 
     fetchMapActivities();
     
-    // Set up Stadia Maps API key
-    useEffect(() => {
-      // Try to get the API key from environment variables
-      const stadiaApiKey = process.env.NEXT_PUBLIC_STADIA_MAPS_API_KEY || null
-      setApiKey(stadiaApiKey)
-      
-      if (!stadiaApiKey && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        console.warn("No Stadia Maps API key provided. Using domain-based authentication if configured or rate-limited access.")
-      }
-    }, [])
-    
     // Proper cleanup
     return () => {
       if (animationScope.current) {
@@ -501,6 +490,17 @@ function MapPageContent() {
     };
   }, []);
 
+  // Set up Stadia Maps API key - moved outside of the previous useEffect
+  useEffect(() => {
+    // Try to get the API key from environment variables
+    const stadiaApiKey = process.env.NEXT_PUBLIC_STADIA_MAPS_API_KEY || null
+    setApiKey(stadiaApiKey)
+    
+    if (!stadiaApiKey && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      console.warn("No Stadia Maps API key provided. Using domain-based authentication if configured or rate-limited access.")
+    }
+  }, [])
+  
   // Toggle sidebar visibility
   const toggleSidebar = () => {
     setIsSidebarVisible(!isSidebarVisible)
