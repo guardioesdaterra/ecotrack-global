@@ -1,0 +1,6 @@
+# Supabase environment variables - Add these to your .env.local file and Vercel project settings
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Note: Replace the placeholder values above with your actual Supabase credentials
+# You can find these values in your Supabase project dashboard under Settings > API 
