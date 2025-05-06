@@ -122,6 +122,7 @@ interface Activity {
 interface MapClientProps {
   activities: Activity[]
   initialSelectedActivity?: string | null
+  stadiaApiKey?: string | null
 }
 
 
@@ -1542,7 +1543,7 @@ function spreadOverlappingMarkers(activities: Activity[]): Activity[] {
 }
 
 // Static Map with extremely simplified initialization
-function StaticMap({ activities }: { activities?: Activity[] }) {
+function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stadiaApiKey?: string | null }) {
   const [mapReady, setMapReady] = useState(false);
   const [layersReady, setLayersReady] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -1784,8 +1785,19 @@ function StaticMap({ activities }: { activities?: Activity[] }) {
           }).addTo(mapInstance);
           
           // Add a third layer just for water and natural features with higher opacity
-          const naturesLayerUrl = "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg";
-          const naturesAttribution = '&copy; <a href="https://stamen.com">Stamen Design</a>';
+          // Add authentication to Stadia Maps URL
+          let naturesLayerUrl = "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg";
+          // Add API key if available
+          if (stadiaApiKey) {
+            naturesLayerUrl += `?api_key=${stadiaApiKey}`;
+            console.log("Using Stadia Maps with API key authentication");
+          } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            console.log("Using Stadia Maps with localhost authentication (limited rate)");
+          } else {
+            console.warn("No Stadia Maps API key provided. Using domain-based authentication if configured.");
+          }
+          
+          const naturesAttribution = '&copy; <a href="https://stamen.com">Stamen Design</a>, &copy; <a href="https://stadiamaps.com/">Stadia Maps</a>';
           
           L.tileLayer(naturesLayerUrl, {
             attribution: naturesAttribution,
@@ -1814,7 +1826,7 @@ function StaticMap({ activities }: { activities?: Activity[] }) {
     } catch (error) {
       console.error("Error initializing map:", error);
     }
-  }, [resolvedTheme, isMobile]);
+  }, [resolvedTheme, isMobile, stadiaApiKey]); // Add stadiaApiKey to dependencies
   
   // Add layers only after map is fully initialized and with a significant delay
   useEffect(() => {
@@ -1869,7 +1881,7 @@ function StaticMap({ activities }: { activities?: Activity[] }) {
     }, 2000); // 2-second delay for ensuring DOM is ready
     
     return () => clearTimeout(timer);
-  }, [mapReady]);
+  }, [mapReady, stadiaApiKey]); // Add stadiaApiKey to dependencies
   
   return (
     <div className="w-full h-full relative">
@@ -2037,7 +2049,7 @@ function StaticMap({ activities }: { activities?: Activity[] }) {
   );
 }
 
-export default function MapClient({ activities: propActivities, initialSelectedActivity }: MapClientProps) {
+export default function MapClient({ activities: propActivities, initialSelectedActivity, stadiaApiKey }: MapClientProps) {
   const [activities, setActivities] = useState<Activity[]>(propActivities || []);
   const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2142,6 +2154,9 @@ export default function MapClient({ activities: propActivities, initialSelectedA
   }
 
   // Render the simplified static map
-  return <StaticMap activities={filteredActivities.length > 0 ? filteredActivities : activities} />;
+  return <StaticMap 
+    activities={filteredActivities.length > 0 ? filteredActivities : activities} 
+    stadiaApiKey={stadiaApiKey}
+  />;
 }
 

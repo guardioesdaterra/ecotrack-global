@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 import { useSearchParams } from "next/navigation"
 import { AnimationInstance } from "@/types/animations"
+import MapClient from "@/components/MapClient"
+import { convertToMapActivity } from "@/lib/utils"
 
 // Define the Activity interface matching what MapClient expects
 interface MapClientActivity {
@@ -329,6 +331,7 @@ function MapPageContent() {
   const animationScope = useRef<any>(null)
   const searchParams = useSearchParams()
   const [error, setError] = useState<string | null>(null)
+  const [apiKey, setApiKey] = useState<string | null>(null)
   
   // Get activity ID from URL if present
   useEffect(() => {
@@ -479,6 +482,17 @@ function MapPageContent() {
 
     fetchMapActivities();
     
+    // Set up Stadia Maps API key
+    useEffect(() => {
+      // Try to get the API key from environment variables
+      const stadiaApiKey = process.env.NEXT_PUBLIC_STADIA_MAPS_API_KEY || null
+      setApiKey(stadiaApiKey)
+      
+      if (!stadiaApiKey && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        console.warn("No Stadia Maps API key provided. Using domain-based authentication if configured or rate-limited access.")
+      }
+    }, [])
+    
     // Proper cleanup
     return () => {
       if (animationScope.current) {
@@ -535,8 +549,9 @@ function MapPageContent() {
       
       {/* Map container */}
       <div className="w-full h-full absolute inset-0 overflow-hidden">
-        <MapClientNoSSR 
-          activities={mappedActivities as any} 
+        <MapClient 
+          activities={mappedActivities}
+          stadiaApiKey={apiKey}
           initialSelectedActivity={selectedActivity}
         />
       </div>

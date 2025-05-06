@@ -17,7 +17,7 @@ A modern web application for tracking and visualizing environmental initiatives 
 - **UI Components**: Radix UI, Shadcn UI
 - **Authentication**: Supabase Auth
 - **Database**: Supabase PostgreSQL
-- **Mapping**: Leaflet and React Leaflet
+- **Mapping**: Leaflet, React Leaflet, and Stadia Maps
 - **Animation**: Framer Motion
 - **State Management**: React Context API
 
@@ -28,6 +28,7 @@ A modern web application for tracking and visualizing environmental initiatives 
 - Node.js 18+ and npm/yarn
 - Supabase account (free tier works for development)
 - mkcert for local HTTPS certificates (required for geolocation features)
+- Stadia Maps account (free tier available for development)
 
 ### Installation
 
@@ -54,7 +55,31 @@ This will use mkcert to generate localhost certificates. If you don't have mkcer
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_STADIA_MAPS_API_KEY=your_stadia_maps_api_key
 ```
+
+### Stadia Maps Configuration
+
+The application uses Stadia Maps for the map tiles. You have three options for authentication:
+
+1. **Development without API Key**: For local development on `localhost`, no API key is needed but you will have strict rate limits.
+
+2. **Using an API Key** (recommended):
+   - Sign up for a free account at [Stadia Maps](https://client.stadiamaps.com/)
+   - Go to "Manage Properties" in the dashboard
+   - Generate an API key under "Authentication Configuration"
+   - Add the API key to your `.env.local` file:
+   ```
+   NEXT_PUBLIC_STADIA_MAPS_API_KEY=your_stadia_maps_api_key
+   ```
+
+3. **Production Domain Authentication**:
+   - Sign in to the Stadia Maps client dashboard
+   - Click "Manage Properties"
+   - Under "Authentication Configuration," add your domain
+   - This allows your production site to use Stadia Maps without exposing your API key
+
+For more details, see the [Stadia Maps Authentication Documentation](http://docs.stadiamaps.com/authentication).
 
 ### Supabase Configuration
 
