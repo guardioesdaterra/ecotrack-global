@@ -5,9 +5,15 @@ import { Activity, getActivityColor } from "@/components/map-component"
 declare const L: any
 
 interface Connection {
-  id: number
-  from_activity_id: number
-  to_activity_id: number
+  id: string
+  from_activity_id: string
+  to_activity_id: string
+  type: string
+  description?: string
+}
+
+interface ConnectionLinesProps {
+  connections: Connection[]
 }
 
 // Helper function to shuffle an array (Fisher-Yates algorithm)
@@ -19,6 +25,41 @@ function shuffleArray<T>(array: T[]): T[] {
   }
   return newArray;
 }
+
+export const computeConnectionLines = (activities: Activity[]): Connection[] => {
+  const connections: Connection[] = [];
+  
+  // Generate unique IDs for connections
+  let connectionIdCounter = 1;
+
+  // Find connections based on activities with similar regions
+  activities.forEach(activity => {
+    const sameRegionActivities = activities.filter(a => 
+      a.id !== activity.id && 
+      a.country === activity.country
+    );
+    
+    sameRegionActivities.forEach(targetActivity => {
+      // Skip if connection already exists in the reverse direction
+      const existingConnection = connections.find(
+        c => (c.from_activity_id === targetActivity.id && c.to_activity_id === activity.id)
+      );
+      
+      if (!existingConnection) {
+        connections.push({
+          id: connectionIdCounter.toString(), // Convert to string
+          from_activity_id: activity.id,
+          to_activity_id: targetActivity.id,
+          type: activity.type,
+          description: activity.description
+        });
+        connectionIdCounter++;
+      }
+    });
+  });
+  
+  return connections;
+};
 
 export const ConnectionLines: React.FC<{ activities: Activity[] }> = ({ activities }) => {
   const map = useMap()
@@ -43,10 +84,13 @@ export const ConnectionLines: React.FC<{ activities: Activity[] }> = ({ activiti
         // Create connections
         targets.forEach(targetId => {
           newConnections.push({
-            id: connectionId++,
+            id: connectionId.toString(), // Convert to string
             from_activity_id: activity.id,
-            to_activity_id: targetId
+            to_activity_id: targetId,
+            type: activity.type,
+            description: activity.description
           });
+          connectionId++;
         });
       });
       

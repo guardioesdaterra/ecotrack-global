@@ -4,8 +4,18 @@ import { Badge } from "@/components/ui/badge"
 
 declare const L: any
 
+interface ActivityNodeProps {
+  id: string
+  type: string
+  title: string
+  lat: number
+  lng: number
+  selected?: boolean
+  onClick?: (id: string) => void
+}
+
 interface Activity {
-  id: number
+  id: string
   lat: number
   lng: number
   type: string

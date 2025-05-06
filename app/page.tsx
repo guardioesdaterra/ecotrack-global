@@ -21,17 +21,16 @@ import {
   Hexagon, 
   Activity 
 } from "lucide-react"
-import { InitiativesCount, CountriesCount, DirectBeneficiariesCount, IndirectBeneficiariesCount } from "@/components/InitiativesCount"
+import { InitiativesCount, CountriesCount } from "@/components/InitiativesCount"
 import { useEffect, useState, useRef, useMemo, Suspense } from "react"
 import * as React from 'react'
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useOverlay } from "@/contexts/overlay-context"
-import { supabase, checkSupabaseConnection, getSupabaseClient, fetchActivities } from "@/lib/supabaseClient"
+import { fetchActivities, getSupabaseBrowserClient } from "@/lib/supabaseClient"
 import { Activity as ActivityType } from "@/components/map-component"
 import dynamic from "next/dynamic"
-import { GradientButton } from "@/components/ui/gradient-button"
 import { usePerformanceMode } from "@/hooks/use-performance-mode"
 
 // Lazy load with priority for critical components
@@ -47,7 +46,6 @@ const GlobeDemo = dynamic(
     ssr: false, 
     loading: () => (
       <div className="w-full h-full flex items-center justify-center">
-        <div className="h-10 w-10 rounded-full animate-pulse bg-cyan-500/30"></div>
       </div>
     )
   }
@@ -63,6 +61,7 @@ export default function Home() {
   const [lowPerformance, setLowPerformance] = useState(false)
   const [globeLoaded, setGlobeLoaded] = useState(false)
   const { performanceMode } = usePerformanceMode()
+  const [error, setError] = useState<string | null>(null)
   
   // Prefetch profile page to make future navigation faster
   useEffect(() => {
@@ -147,20 +146,21 @@ export default function Home() {
       if (!isLoading) return
       
       try {
-        // Skip data fetching during prerendering
+        // Skip data fetching during SSR
         if (typeof window === 'undefined') {
           setActivities([]);
           setIsLoading(false);
           return;
         }
         
-        console.log("Loading activities from cache or Supabase...");
+        console.log("Loading activities from Supabase...");
         
-        // Use the new fetchActivities function with caching
+        try {
+          // Use the fetchActivities function with the browser client
         const data = await fetchActivities(performanceMode === 'low' ? 20 : 50);
         
         // Transform database data to match activity interface
-        const activitiesData = data.map(item => {
+          const activitiesData = data.map((item: any) => {
           // Convert database schema to Activity type
           const activity: ActivityType = {
             id: item.id,
@@ -172,18 +172,54 @@ export default function Home() {
             country: item.country || 'Unknown',
             adress: item.city ? `${item.city}, ${item.country || ''}` : undefined,
             responsible: item.responsible || 'Unknown',
-            direct_benefited: item.direct_benefited === null ? undefined : item.direct_benefited,
-            indirect_benefited: item.indirect_benefited === null ? undefined : item.indirect_benefited,
             photos: item.photos === null ? undefined : item.photos
           };
           return activity;
         });
         
         setActivities(activitiesData);
+          setIsLoading(false);
+          
+          // Save to localStorage as a client-side cache
+          try {
+            localStorage.setItem('mapActivities', JSON.stringify(activitiesData));
+            localStorage.setItem('mapActivitiesTimestamp', Date.now().toString());
+          } catch (e) {
+            console.warn('Failed to save activities to localStorage:', e);
+          }
+        } catch (err) {
+          console.error("Error loading activities:", err);
+          setError(`Failed to load activities: ${err instanceof Error ? err.message : String(err)}`);
+          
+          // Try to load from localStorage as a fallback
+          try {
+            const cachedData = localStorage.getItem('mapActivities');
+            if (cachedData) {
+              console.log("Using cached activities from localStorage");
+              const parsedData = JSON.parse(cachedData);
+              const activitiesData = parsedData.map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                type: item.type,
+                description: item.description || '',
+                lat: item.lat || 0,
+                lng: item.lng || 0,
+                country: item.country || 'Unknown',
+                adress: item.adress,
+                responsible: item.responsible || 'Unknown',
+                photos: item.photos === null ? undefined : item.photos
+              }));
+              setActivities(activitiesData);
+            }
+          } catch (cacheErr) {
+            console.error("Failed to load cached activities:", cacheErr);
+          }
+          
+          setIsLoading(false);
+        }
       } catch (error) {
-        console.error("Error loading activities:", error instanceof Error ? error.message : JSON.stringify(error));
-        setActivities([]);
-      } finally {
+        console.error("Unhandled error in loadActivities:", error);
+        setError(`An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}`);
         setIsLoading(false);
       }
     }
@@ -365,7 +401,7 @@ export default function Home() {
                 className="inline-flex items-center gap-1.5 md:gap-2 mb-2 md:mb-4 px-2 py-1 md:px-4 md:py-2 rounded-md bg-gradient-to-r from-cyan-900/40 to-purple-900/40 backdrop-blur-md border border-cyan-500/30 mx-auto md:mx-0"
               >
                 <div className="h-1.5 w-1.5 md:h-2 md:w-2 rounded-full bg-cyan-400 animate-pulse"></div>
-                <span className="text-[10px] md:text-sm font-medium text-cyan-300 tracking-wide font-mono">ECOTRACK SYSTEM v3.7</span>
+                <span className="text-[10px] md:text-sm font-medium text-cyan-300 tracking-wide font-mono">ECOTRACK SYSTEM v1.9</span>
               </motion.div>
               
               {/* Main heading with smaller size */}
@@ -442,61 +478,42 @@ export default function Home() {
                 </Link>
               </motion.div>
               
-              {/* Mobile Globe - positioned below buttons */}
-              {isMobile && (
+              {/* Desktop Globe - ensure z-index for interactivity */}
+              {!isMobile && (
                 <motion.div 
-                  className="relative w-full h-64 mt-0 mb-8 pointer-events-none overflow-visible z-25"
+                  className="hidden md:flex fixed top-0 bottom-0 items-center w-full h-full overflow-visible"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.7, delay: 0.8 }}
-                  style={{
-                    marginTop: "50px",
-                    position: "relative"
-                  }}
+                  style={{ zIndex: 10, left: "60%" }}
                 >
                   {globeLoaded && (
-                    <div className="absolute inset-0 flex items-center justify-center overflow-visible" 
-                         style={{
-                           top: "0px"
-                         }}>
-                      <div className="w-[140%] h-[140%] relative">
+                    <div className="w-[640px] h-[640px] flex items-center justify-center">
+                      <GlobeDemo />
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {/* Mobile Globe - ensure z-index for interactivity */}
+              {isMobile && (
+                <motion.div 
+                  className="fixed inset-0 flex items-center justify-center z-[20]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.7, delay: 0.8 }}
+                >
+                  {globeLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center overflow-visible">
+                      <div className="w-[250px] h-[250px]">
                         <GlobeDemo />
                       </div>
                     </div>
                   )}
                 </motion.div>
               )}
-            </motion.div>
-            
-            {/* Desktop Globe - positioned to the right */}
-            {!isMobile && (
-              <motion.div 
-                className="hidden md:block w-[45%] h-[650px] pointer-events-none relative overflow-visible"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.7, delay: 0.8 }}
-                style={{
-                  position: "relative",
-                  top: "120px",
-                  right: "-10px",
-                  left: "-60px",
-                  marginLeft: "-30px",
-                  transform: "scale(1.1)",
-                  zIndex: 25
-                }}
-              >
-                {globeLoaded && (
-                  <div className="absolute inset-0 flex items-center justify-center overflow-visible">
-                    <div className="w-[130%] h-[130%] relative">
-                      <GlobeDemo />
-                      <div className="absolute inset-0 pointer-events-none bg-transparent"></div>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            )}
 
-              {/* Scroll to explore text - repositioned */}
+              {/* Scroll to explore text */}
               <motion.div
                 className="fixed bottom-16 md:bottom-16 left-0 w-full flex justify-center items-center flex-col gap-1.5 text-center z-30"
                 initial={{ opacity: 0 }}
@@ -512,6 +529,7 @@ export default function Home() {
                   transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                 />
               </motion.div>
+            </motion.div>
           </div>
         </div>
       </div>

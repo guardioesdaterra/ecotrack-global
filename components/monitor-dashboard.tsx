@@ -24,8 +24,6 @@ interface UserActivity {
   latitude?: number;
   longitude?: number;
   responsible?: string;
-  direct_benefited?: number;
-  indirect_benefited?: number;
   created_at: string;
   user_id?: string;
   city?: string;
@@ -291,7 +289,7 @@ export default function MonitorDashboard() {
   }, [user])
   
   const fetchUserActivities = async () => {
-    if (!user) return
+    if (!user || !supabase) return
     
     setIsLoading(true)
     setError(null)
@@ -523,18 +521,18 @@ export default function MonitorDashboard() {
                   description="Locations" 
                   color="bg-purple-500"
                 />
-                <ImpactCard 
-                  title="Direct Impact" 
-                  value={userActivities.reduce((sum, activity) => sum + (activity.direct_benefited || 0), 0)} 
-                  icon={<Activity className="h-4 w-4" />}
-                  description="People impacted" 
+                <ImpactCard
+                  title="Photos"
+                  value={userActivities.filter(a => a.photos).length}
+                  icon={<Camera className="h-4 w-4" />}
+                  description="With photos"
                   color="bg-green-500"
                 />
-                <ImpactCard 
-                  title="Indirect Impact" 
-                  value={userActivities.reduce((sum, activity) => sum + (activity.indirect_benefited || 0), 0)} 
-                  icon={<BarChart3 className="h-4 w-4" />}
-                  description="Extended reach" 
+                <ImpactCard
+                  title="Locations"
+                  value={new Set(userActivities.map(a => a.country).filter(Boolean)).size}
+                  icon={<MapPin className="h-4 w-4" />}
+                  description="Unique countries"
                   color="bg-amber-500"
                 />
               </motion.div>
@@ -633,33 +631,6 @@ export default function MonitorDashboard() {
                             </div>
                           )}
                         </div>
-                        
-                        {(activity.direct_benefited || activity.indirect_benefited) && (
-                          <div className="grid grid-cols-2 gap-4 mt-4">
-                            {activity.direct_benefited && (
-                              <motion.div 
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ delay: 0.1 * index + 0.2 }}
-                                className="bg-black/60 p-2.5 rounded border border-cyan-900/30 backdrop-blur-sm"
-                              >
-                                <span className="text-xs text-gray-400">Direct Beneficiaries</span>
-                                <p className="text-cyan-300 font-bold">{activity.direct_benefited.toLocaleString()}</p>
-                              </motion.div>
-                            )}
-                            {activity.indirect_benefited && (
-                              <motion.div 
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ delay: 0.1 * index + 0.3 }}
-                                className="bg-black/60 p-2.5 rounded border border-cyan-900/30 backdrop-blur-sm"
-                              >
-                                <span className="text-xs text-gray-400">Indirect Impact</span>
-                                <p className="text-purple-300 font-bold">{activity.indirect_benefited.toLocaleString()}</p>
-                              </motion.div>
-                            )}
-                          </div>
-                        )}
                       </CardContent>
                     </Card>
                   </motion.div>

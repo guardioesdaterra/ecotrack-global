@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState } from "react"
 
-type OverlayType = "submit" | "monitor" | "edit" | "view" | null
+export type OverlayType = "submit" | "monitor" | "edit" | "view" | null
 
 interface OverlayContextType {
   overlayType: OverlayType;

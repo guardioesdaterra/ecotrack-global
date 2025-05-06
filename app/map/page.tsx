@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, Suspense } from "react"
 import dynamic from 'next/dynamic'
-import { supabase } from "@/lib/supabaseClient"
+import { getSupabaseBrowserClient, fetchActivities } from "@/lib/supabaseClient"
 import { Activity as MapComponentActivity } from "@/components/map-component"
 import { animate, createScope, createSpring } from "animejs"
 import { Globe, Layers, Filter, ChevronDown, MapPin, Compass } from "lucide-react"
@@ -13,7 +13,7 @@ import { AnimationInstance } from "@/types/animations"
 
 // Define the Activity interface matching what MapClient expects
 interface MapClientActivity {
-  id: number
+  id: string
   lat: number
   lng: number
   country?: string
@@ -22,8 +22,6 @@ interface MapClientActivity {
   title: string
   responsible?: string
   photos?: string | null
-  direct_benefited?: number
-  indirect_benefited?: number
   description?: string
 }
 
@@ -156,7 +154,7 @@ function MapSidebar({
   isVisible: boolean, 
   onToggle: () => void,
   activities: MapClientActivity[],
-  onActivityClick: (id: number, lat: number, lng: number) => void
+  onActivityClick: (id: string, lat: number, lng: number) => void
 }) {
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
   
@@ -320,22 +318,23 @@ function MapSidebar({
 
 // Wrap the component that uses useSearchParams with Suspense
 function MapPageContent() {
-  const [activities, setActivities] = useState<MapComponentActivity[]>([])
+  const [activities, setActivities] = useState<MapClientActivity[]>([])
   const [mappedActivities, setMappedActivities] = useState<MapClientActivity[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSidebarVisible, setIsSidebarVisible] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState<number | null>(null)
+  const [selectedActivity, setSelectedActivity] = useState<string | null>(null)
   const [filteredCount, setFilteredCount] = useState<number>(0)
   const [showFilterNotice, setShowFilterNotice] = useState<boolean>(false)
   const mapPageRef = useRef<HTMLDivElement>(null)
   const animationScope = useRef<any>(null)
   const searchParams = useSearchParams()
+  const [error, setError] = useState<string | null>(null)
   
   // Get activity ID from URL if present
   useEffect(() => {
     const activityId = searchParams.get('activity')
     if (activityId) {
-      setSelectedActivity(parseInt(activityId))
+      setSelectedActivity(activityId)
     }
   }, [searchParams])
   
@@ -370,71 +369,115 @@ function MapPageContent() {
       }
     });
     
+    // Initialize Supabase
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase && typeof window !== 'undefined') {
+      setError('Unable to initialize Supabase client');
+      setIsLoading(false);
+      return;
+    }
+    
+    // Skip initial fetch in server-side rendering
+    if (typeof window === 'undefined') {
+      setIsLoading(false);
+      return;
+    }
+
     // Fetch activity data
-    const fetchActivities = async () => {
+    const fetchMapActivities = async () => {
       try {
         if (!supabase) {
-          console.error('Supabase client is not initialized')
-          return []
+          throw new Error('Supabase client is not initialized');
         }
         
         const { data, error } = await supabase
           .from('ecotrack')
           .select('*')
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false });
 
         if (error) {
-          console.error('Error fetching activities:', error)
-          return []
+          throw new Error(`Database error: ${error.message}`);
         }
 
-        if (!data) {
-          console.error('No data returned from Supabase')
-          return []
+        if (!data || data.length === 0) {
+          console.warn('No data returned from Supabase');
+          setActivities([]);
+          setMappedActivities([]);
+          setIsLoading(false);
+          return;
         }
         
-        if (error) {
-          console.error('Supabase query error:', error)
-          return []
-        }
-
         // Transform data for map component
-        const transformedData = data?.map(item => ({
+        const transformedData = data.map(item => ({
           id: item.id,
-          lat: item.latitude !== undefined && item.latitude !== null ? item.latitude : (item.lat || 0),
-          lng: item.longitude !== undefined && item.longitude !== null ? item.longitude : (item.lng || 0),
+          lat: item.latitude || 0,
+          lng: item.longitude || 0,
           country: item.country,
-          adress: item.city ? `${item.street || ''}, ${item.city}` : item.street,
-          type: item.type || "other",
+          adress: item.city ? `${item.city}, ${item.country || ''}` : '',
+          type: item.type,
           title: item.title,
-          responsible: item.responsible,
+          responsible: item.responsible || 'System',
           photos: item.photos,
-          direct_benefited: item.direct_benefited,
-          indirect_benefited: item.indirect_benefited,
           description: item.description
-        }))
+        }));
+
+        // Filter out invalid activities (those without lat/lng)
+        const validActivities = transformedData.filter(a => 
+          a.lat !== undefined && a.lat !== null && 
+          a.lng !== undefined && a.lng !== null
+        );
+
+        setActivities(data);
+        setMappedActivities(validActivities);
         
-        const validActivities = transformedData?.filter(activity => {
-          return activity.lat && activity.lng && 
-                 activity.lat !== 0 && activity.lng !== 0 &&
-                 !isNaN(activity.lat) && !isNaN(activity.lng)
-        }) || []
+        // Cache the data in localStorage for offline usage
+        try {
+          localStorage.setItem('map_activities', JSON.stringify(data));
+          localStorage.setItem('map_activities_timestamp', Date.now().toString());
+        } catch (e) {
+          console.warn('Failed to cache data in localStorage:', e);
+        }
+      } catch (err) {
+        console.error('Error fetching activities:', err);
+        setError(`Failed to load activities: ${err instanceof Error ? err.message : String(err)}`);
         
-        // Track filtered activities
-        const filteredOut = (transformedData?.length || 0) - validActivities.length
-        setFilteredCount(filteredOut)
-        setShowFilterNotice(filteredOut > 0)
-        
-        setActivities(data || [])
-        setMappedActivities(validActivities)
-        setIsLoading(false)
-      } catch (error) {
-        console.error("Error fetching activities:", error)
-        setIsLoading(false)
+        // Try to load from localStorage as a degraded mode
+        try {
+          const cachedData = localStorage.getItem('map_activities');
+          if (cachedData) {
+            console.log('Using cached map activities from localStorage');
+            const data = JSON.parse(cachedData);
+            
+            const transformedData = data.map((item: any) => ({
+              id: item.id,
+              lat: item.latitude || 0,
+              lng: item.longitude || 0,
+              country: item.country,
+              adress: item.city ? `${item.city}, ${item.country || ''}` : '',
+              type: item.type,
+              title: item.title,
+              responsible: item.responsible || 'System',
+              photos: item.photos,
+              description: item.description
+            }));
+            
+            const validActivities = transformedData.filter((a: any) => 
+              a.lat !== undefined && a.lat !== null && 
+              a.lng !== undefined && a.lng !== null
+            );
+            
+            setActivities(data);
+            setMappedActivities(validActivities);
+          }
+        } catch (cacheErr) {
+          console.error('Failed to load cached data:', cacheErr);
+        }
+      } finally {
+        setIsLoading(false);
       }
-    }
-    
-    fetchActivities();
+    };
+
+    fetchMapActivities();
     
     // Proper cleanup
     return () => {
@@ -450,7 +493,7 @@ function MapPageContent() {
   }
   
   // Handle clicking an activity in the sidebar
-  const handleActivityClick = (id: number, lat: number, lng: number) => {
+  const handleActivityClick = (id: string, lat: number, lng: number) => {
     setSelectedActivity(id)
     setIsSidebarVisible(false)
   }
@@ -493,7 +536,7 @@ function MapPageContent() {
       {/* Map container */}
       <div className="w-full h-full absolute inset-0 overflow-hidden">
         <MapClientNoSSR 
-          activities={mappedActivities} 
+          activities={mappedActivities as any} 
           initialSelectedActivity={selectedActivity}
         />
       </div>
@@ -520,7 +563,7 @@ function MapPageContent() {
       
       {/* Attribution */}
       <div className="absolute bottom-2 right-2 z-10 text-xs text-white/50 bg-black/30 backdrop-blur-sm px-2 py-1 rounded">
-        <span>Powered by EcoTrack</span>
+        <span>Powered by EcoTrack + Stamen Maps + OpenStreetMap</span>
       </div>
     </div>
   )

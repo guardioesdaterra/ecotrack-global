@@ -2,7 +2,7 @@
 
 // Define the standard Activity interface used across all components
 export interface Activity {
-  id: number
+  id: string
   lat: number
   lng: number
   country?: string
@@ -11,8 +11,6 @@ export interface Activity {
   title: string
   responsible?: string
   photos?: string[]
-  direct_benefited?: number
-  indirect_benefited?: number
   description?: string
 }
 

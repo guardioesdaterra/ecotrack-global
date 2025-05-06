@@ -2,6 +2,7 @@
 
 import "leaflet/dist/leaflet.css"
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
+import React from "react"
 import { MapContainer, TileLayer, useMap, ZoomControl, Marker, Popup } from "react-leaflet"
 import { Badge } from "@/components/ui/badge"
 import { ParticleEffect } from "@/components/particle-effect"
@@ -11,18 +12,51 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Sparkles, Zap, Leaf, Droplets, BookOpen, Shield, Globe, Wind } from "lucide-react"
 import { ConnectionLines } from "./connection-lines"
 import { getActivityColor } from "@/components/map-component"
-import { supabase } from "@/lib/supabaseClient"
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient"
 import { useEffects } from "@/lib/effects"
+import { AnimationInstance } from "@/types/animations"
+import { Activity as ActivityType } from "@/components/map-component"
+import { convertToMapActivity } from "@/lib/utils"
 
 // Import Leaflet dynamically to avoid SSR issues
 import type * as LeafletNamespace from 'leaflet';
 // Import a specific version of Leaflet CSS to ensure compatibility
 import "leaflet/dist/leaflet.css"
+import "leaflet.markercluster/dist/MarkerCluster.css"
+import "leaflet.markercluster/dist/MarkerCluster.Default.css"
 
 // Define our local Activity interface for this component
 import type { Activity as BaseActivity } from "@/components/map-component";
 
+// This will be our Leaflet instance, initialized client-side only
 let L: typeof LeafletNamespace | null = null;
+
+// Add a type declaration for leaflet.markercluster
+declare global {
+  interface Window {
+    prevActivityImage: (id: string) => void;
+    nextActivityImage: (id: string) => void;
+    showGallery_: {[key: string]: () => void};
+  }
+}
+
+// Helper function to debounce function calls
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+  
+  return function(...args: Parameters<T>): void {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    
+    timeout = setTimeout(() => {
+      func(...args);
+    }, wait);
+  };
+}
 
 // Set up a flag to track if Leaflet is loaded
 const useLeaflet = () => {
@@ -68,7 +102,7 @@ const useLeaflet = () => {
 };
 
 interface Activity {
-  id: number
+  id: string
   lat: number
   lng: number
   country?: string
@@ -81,38 +115,21 @@ interface Activity {
   photos?: string | null
   hyperlink?: string | null
   created_at?: string | null
-  direct_benefited?: number
-  indirect_benefited?: number
+  originalLat?: number
+  originalLng?: number
 }
 
 interface MapClientProps {
   activities: Activity[]
-  initialSelectedActivity?: number | null
+  initialSelectedActivity?: string | null
 }
 
-// Add description to the FlyToEvent interface if missing from Activity
-interface FlyToEvent {
-  id: number | string
-  lat: number
-  lng: number
-  zoom: number
-  color: string
-}
 
 // Define SearchFilters interface if needed
 interface SearchFilters {
   query: string
   types: string[]
   expanded: boolean
-}
-
-// Define global window interface for image navigation functions
-declare global {
-  interface Window {
-    prevActivityImage: (id: number) => void;
-    nextActivityImage: (id: number) => void;
-    showGallery_: {[key: number]: () => void};
-  }
 }
 
 // Add PhotoGallery component at the top level of the file
@@ -280,7 +297,7 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
               />
               
               <div 
-                className="absolute inset-0 pointer-events-none opacity-30" 
+                className="absolute inset-0 pointer-events-none opacity-10" 
                 style={{ 
                   backgroundImage: 'url("/scanline.gif")',
                   backgroundRepeat: 'repeat',
@@ -328,7 +345,7 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
                 }}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6"></polyline>
+                  <polyline points="9 18l6-6-6-6" />
                 </svg>
               </button>
             </>
@@ -395,76 +412,6 @@ function getActivityIcon(type: string) {
   }
 }
 
-// New FlyToAnimation component
-function FlyToAnimation({ event }: { event: FlyToEvent | null }) {
-  const map = useMap();
-  const { shouldReduceAnimations } = useEffects();
-  
-  useEffect(() => {
-    if (!event) return;
-    
-    // Fly to location with different settings based on performance mode
-    map.flyTo(
-      [event.lat, event.lng],
-      event.zoom,
-      {
-        duration: shouldReduceAnimations ? 1.5 : 0.8,
-        easeLinearity: shouldReduceAnimations ? 0.5 : 0.25
-      }
-    );
-    
-    // Show ripple effect unless in reduced mode
-    if (!shouldReduceAnimations) {
-      const point = map.latLngToContainerPoint([event.lat, event.lng]);
-      
-      // Create ripple element
-      const ripple = document.createElement('div');
-      ripple.className = 'map-focus-indicator marker-pulse';
-      ripple.style.cssText = `
-        position: absolute;
-        left: ${point.x}px;
-        top: ${point.y}px;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: transparent;
-        border: 2px solid ${event.color};
-        transform: translate(-50%, -50%) scale(0);
-        opacity: 0.8;
-        z-index: 1000;
-        pointer-events: none;
-        animation: markerPulse 1.5s cubic-bezier(0, 0.6, 0.4, 1) forwards;
-        box-shadow: 0 0 15px ${event.color}60, 0 0 30px ${event.color}30;
-      `;
-      
-      // Add to map and remove after animation
-      map.getContainer().appendChild(ripple);
-      setTimeout(() => {
-        map.getContainer().removeChild(ripple);
-      }, 1500);
-    }
-  }, [event, map, shouldReduceAnimations]);
-  
-  return null;
-}
-
-// Provide a way to trigger flyTo animations
-const useFlyToStore = () => {
-  const [event, setEvent] = useState<FlyToEvent | null>(null);
-  
-  const flyTo = useCallback((newEvent: FlyToEvent) => {
-    setEvent(prev => {
-      // Only update if different location
-      if (prev?.id !== newEvent.id) {
-        return newEvent;
-      }
-      return prev;
-    });
-  }, []);
-  
-  return { event, flyTo };
-};
-
 // MapEffects component to inject animation styles
 function MapEffects() {
   return (
@@ -499,33 +446,13 @@ function MapEffects() {
             opacity: 0.3;
           }
         }
-        
-        .map-focus-indicator {
-          animation: focusPulse 2s infinite;
-        }
-        
-        @keyframes focusPulse {
-          0% {
-            transform: translate(-50%, -50%) scale(0.8);
-            opacity: 0.7;
-          }
-          50% {
-            transform: translate(-50%, -50%) scale(1.2);
-            opacity: 0.3;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(0.8);
-            opacity: 0.7;
-          }
-        }
       `}</style>
     </div>
   );
 }
 
-// MapController with access to flyTo events
+// MapController with simplified functionality
 function MapController() {
-  const { event } = useFlyToStore();
   const map = useMap();
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { resolvedTheme } = useTheme();
@@ -552,27 +479,30 @@ function MapController() {
       const northEast = L!.latLng(90, 200);
       const bounds = L!.latLngBounds(southWest, northEast);
     
-    // Apply limits with a margin to avoid visual issues
-    map.setMaxBounds(bounds);
-    map.options.maxBoundsViscosity = 1.0; // Force map to stay within boundaries
+      // Apply limits with a margin to avoid visual issues
+      map.setMaxBounds(bounds);
+      map.options.maxBoundsViscosity = 1.0; // Force map to stay within boundaries
     }
     
     // Additional settings to improve experience
     map.options.zoomSnap = 1;
     map.options.zoomDelta = 1;
     map.options.wheelDebounceTime = 100;
+    map.options.minZoom = 2;  // Prevent zooming out too far
+    map.options.maxZoom = 5; // Prevent zooming in too close
 
+    // Set initial view with appropriate zoom levels for mobile and desktop
     if (isMobile) {
-      map.setView([20, 0], 1.8, { animate: true, duration: 1 });
+      map.setView([0, 0], Math.max(2, 1.8), { animate: true, duration: 1 });
     } else {
-      map.setView([20, 0], 2.5, { animate: true, duration: 1 });
+      map.setView([0, 0], Math.max(2, 2.5), { animate: true, duration: 1 });
     }
 
     const handleResize = () => {
       if (window.innerWidth <= 768) {
-        map.setView([20, 0], 1.8, { animate: true, duration: 0.5 });
+        map.setView([0, 0], Math.max(2, 1.8), { animate: true, duration: 0.5 });
       } else {
-        map.setView([20, 0], 2.5, { animate: true, duration: 0.5 });
+        map.setView([0, 0], Math.max(2, 2.5), { animate: true, duration: 0.5 });
       }
     };
 
@@ -580,18 +510,12 @@ function MapController() {
     return () => window.removeEventListener("resize", handleResize);
   }, [map, isMobile, resolvedTheme]);
   
-  return (
-    <>
-      <MapEffects />
-      <FlyToAnimation event={event} />
-    </>
-  );
+  return <MapEffects />;
 }
 
 function ActivityNode({ activity }: { activity: Activity }) {
   const { resolvedTheme } = useTheme();
   const color = getActivityColor(activity.type);
-  const { flyTo } = useFlyToStore();
   const map = useMap();
   const [images, setImages] = useState<string[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -648,15 +572,34 @@ function ActivityNode({ activity }: { activity: Activity }) {
         display: flex; 
         align-items: center; 
         justify-content: center;
-          box-shadow: 0 0 15px ${color}, 0 0 30px ${color};
+        box-shadow: 0 0 15px ${color}, 0 0 30px ${color};
         border: 2px solid white;
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 2;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 99999;
         transition: transform 0.3s ease, box-shadow 0.3s ease;
       "></div>
+      ${activity.originalLat !== undefined ? `
+        <div style="
+          position: absolute;
+          top: 8%;
+          right: 8%;
+          width: 16px;
+          height: 16px;
+          background-color: rgba(0, 0, 0, 0.7);
+          border-radius: 50%;
+          border: 1px solid ${color};
+          color: white;
+          font-size: 10px;
+          font-weight: bold;
+          text-align: center;
+          line-height: 14px;
+          z-index: 3;
+          box-shadow: 0 0 5px ${color}, 0 0 10px rgba(0, 0, 0, 0.5);
+        ">+</div>
+      ` : ''}
       <div class="activity-marker-pulse" style="
         position: absolute;
         width: 40px;
@@ -889,14 +832,10 @@ function ActivityNode({ activity }: { activity: Activity }) {
           click: (e) => {
             console.log("Marker clicked:", activity.title);
             
-            // Trigger the flyTo animation
-            flyTo({
-              id: activity.id,
-              lat: activity.lat,
-              lng: activity.lng,
-              zoom: map.getZoom() < 8 ? 8 : map.getZoom() + 1,
-              color: color
-            });
+            // Calculate new zoom level respecting min/max limits
+            let newZoom = map.getZoom() < 8 ? 8 : map.getZoom() + 1;
+            // Ensure zoom is within our limits
+            newZoom = Math.min(16, Math.max(2, newZoom));
             
             // Generate image slider HTML if we have images
             let imageSliderHtml = '';
@@ -964,6 +903,18 @@ function ActivityNode({ activity }: { activity: Activity }) {
                 ${imageSliderHtml}
                 
                 <div class="p-4">
+                  ${activity.originalLat !== undefined ? `
+                    <div style="margin-bottom: 0.75rem; padding: 0.5rem; border-radius: 0.375rem; background-color: rgba(${color.startsWith('#') ? parseInt(color.slice(1, 3), 16) : 0}, ${color.startsWith('#') ? parseInt(color.slice(3, 5), 16) : 0}, ${color.startsWith('#') ? parseInt(color.slice(5, 7), 16) : 0}, 0.1); border: 1px dashed ${color}40;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: rgba(255, 255, 255, 0.9);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"></path>
+                          <circle cx="12" cy="9" r="3"></circle>
+                        </svg>
+                        <span>Multiple activities in this location - markers are slightly spread out for visibility</span>
+                      </div>
+                    </div>
+                  ` : ''}
+                  
                   <div class="flex items-start gap-3 mb-3">
                     <div style="background-color: ${color}20; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid ${color}40">
                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1281,195 +1232,746 @@ const convertToBaseActivity = (activity: Activity): BaseActivity => {
     title: activity.title,
     responsible: activity.responsible,
     description: activity.description,
-    direct_benefited: activity.direct_benefited,
-    indirect_benefited: activity.indirect_benefited,
     photos
   };
 };
 
-export default function MapClient({ activities: propActivities, initialSelectedActivity }: MapClientProps) {
-  const [activities, setActivities] = useState<Activity[]>(propActivities || []);
-  const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const [error, setError] = useState<string|null>(null)
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({
-    query: '',
-    types: [],
-    expanded: false
-  });
-  const [mapKey, setMapKey] = useState<number>(0);
-  const [photoModalVisible, setPhotoModalVisible] = useState<boolean>(false);
-  const [currentPhotos, setCurrentPhotos] = useState<string[]>([]);
-  const [currentActivityTitle, setCurrentActivityTitle] = useState<string>("");
-  const [currentActivityColor, setCurrentActivityColor] = useState<string>("");
-  const { event: flyToEvent, flyTo } = useFlyToStore();
-  const isLeafletLoaded = useLeaflet();
-
-  // Fetch activities
+// Add this MapPaneCreator component after the other component definitions, before the main MapClient component
+function MapPaneCreator() {
+  const map = useMap();
+  
   useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        // If we already have activities from props, use them
-        if (propActivities && propActivities.length > 0) {
-          setActivities(propActivities);
-          setFilteredActivities(propActivities);
-          setLoading(false);
-          setInitialLoadComplete(true);
-          return;
-        }
-
-        // Otherwise fetch from Supabase
-        const { data, error: supabaseError } = await supabase
-          .from('ecotrack')
-          .select('*')
-
-        if (supabaseError) {
-          throw supabaseError;
-        }
-          
-        if (!data) {
-          setActivities([]);
-          setFilteredActivities([]);
-          setLoading(false);
-          setInitialLoadComplete(true);
-          return;
-        }
-        
-        // Map the database schema to the Activity interface
-        const activitiesData = data.map(item => ({
-          id: item.id ? parseInt(item.id.toString()) : Math.random() * 10000,
-          lat: item.latitude !== undefined && item.latitude !== null ? item.latitude : (item.lat || 0),
-          lng: item.longitude !== undefined && item.longitude !== null ? item.longitude : (item.lng || 0),
-          country: item.country || 'Unknown',
-          adress: item.street ? `${item.city || ''}, ${item.street}` : (item.city || ''),
-          city: item.city,
-          type: item.type || 'other',
-          title: item.title || 'Untitled Activity',
-          responsible: item.responsible || 'Unknown',
-          photos: item.photos || null,
-          hyperlink: item.hyperlink || null,
-          created_at: item.created_at || null,
-          direct_benefited: item.direct_benefited || 0,
-          indirect_benefited: item.indirect_benefited || 0,
-          description: item.description || '',
-        }));
-        
-        console.log(`Loaded ${activitiesData.length} activities from ecotrack table`);
-        
-        // Filter out activities with invalid coordinates (both lat and lng are 0)
-        const validActivities = activitiesData.filter(activity => 
-          !(activity.lat === 0 && activity.lng === 0)
-        );
-        
-        if (validActivities.length < activitiesData.length) {
-          console.warn(`Filtered out ${activitiesData.length - validActivities.length} activities with invalid coordinates`);
-        }
-        
-        setActivities(validActivities);
-        setFilteredActivities(validActivities);
-      } catch (err) {
-        console.error('Error fetching activities:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error fetching activities');
-      } finally {
-        setLoading(false);
-        setInitialLoadComplete(true);
-      }
-    }
-
-    fetchActivities()
-  }, [propActivities])
-
-  // Handle initial activity selection
-  useEffect(() => {
-    if (!loading && initialSelectedActivity && activities.length > 0) {
-      const activity = activities.find(a => a.id === initialSelectedActivity)
+    // Run once after map is mounted and fully initialized
+    // Use a slight delay to ensure the map is ready
+    const timer = setTimeout(() => {
+      if (!map) return;
       
-      if (activity) {
-        // Create a fly to event with a slight delay to ensure map is ready
-        setTimeout(() => {
-          const event = {
-            id: activity.id,
-            lat: activity.lat,
-            lng: activity.lng,
-            zoom: 14,
-            color: getActivityColor(activity.type)
+      try {
+        // Create a custom pane for labels if it doesn't exist yet
+        if (!map.getPane('labelsPane')) {
+          console.log('Creating labels pane for map');
+          map.createPane('labelsPane');
+          
+          const pane = map.getPane('labelsPane');
+          if (pane) {
+            pane.style.zIndex = '650';
+            pane.style.pointerEvents = 'none';
+            pane.className += ' leaflet-labels-pane';
+          } else {
+            console.error('Failed to get labelsPane after creation');
           }
-          flyTo(event)
-        }, 500)
+        }
+      } catch (error) {
+        console.error('Error creating map pane:', error);
       }
-    }
-  }, [loading, initialSelectedActivity, activities, flyTo])
+    }, 100); // Small delay to ensure map is initialized
+    
+    return () => clearTimeout(timer);
+  }, [map]);
+  
+  return null;
+}
 
-  // Fix for React's StrictMode and leaflet initialization
+// MapReady component to ensure children are only rendered after map is fully initialized
+function MapReady({ children }: { children: React.ReactNode }) {
+  const map = useMap();
+  const [ready, setReady] = useState(false);
+  
   useEffect(() => {
-    // Cleanup any existing map instance on unmount
-    return () => {
-      if (typeof window === 'undefined' || !L) {
-        L = null;
-      }
+    if (!map) return;
+    
+    let isMounted = true;
+    
+    // Try multiple approaches to ensure map is ready
+    
+    // 1. Check if already loaded
+    if ((map as any)._loaded) {
+      setReady(true);
+      return;
+    }
+    
+    // 2. Use whenReady event
+    const handleMapReady = () => {
+      if (isMounted) setReady(true);
     };
-  }, []);
+    
+    try {
+      map.whenReady(handleMapReady);
+    } catch (e) {
+      console.warn("Error using whenReady:", e);
+    }
+    
+    // 3. Fallback with timeout
+    const fallbackTimer = setTimeout(() => {
+      if (isMounted && !ready) {
+        console.log("Using fallback timer for map ready");
+        setReady(true);
+      }
+    }, 2000);
+    
+    return () => {
+      isMounted = false;
+      clearTimeout(fallbackTimer);
+      setReady(false);
+    };
+  }, [map, ready]);
+  
+  return ready ? <>{children}</> : null;
+}
 
-  // Only show loading screen during initial load
-  if (loading && !initialLoadComplete) {
-    return <LoadingScreen />
-  }
+// DelayedMapContent component ensures DOM is fully ready before rendering layers
+function DelayedMapContent({ children }: { children: React.ReactNode }) {
+  const [isReady, setIsReady] = useState(false);
+  const map = useMap();
+  
+  useEffect(() => {
+    if (!map) return;
+    
+    let mounted = true;
+    
+    // Try multiple approaches for reliable initialization
+    
+    // 1. If the map is already loaded, proceed immediately
+    if ((map as any)._loaded) {
+      setIsReady(true);
+      return;
+    }
+    
+    // 2. Use the whenReady event - most reliable approach
+    try {
+      map.whenReady(() => {
+        if (mounted) {
+          console.log("Map is ready in DelayedMapContent");
+          // Add a small additional delay to ensure DOM is fully established
+          setTimeout(() => {
+            if (mounted) setIsReady(true);
+          }, 100);
+        }
+      });
+    } catch (e) {
+      console.warn("Error in map.whenReady:", e);
+    }
+    
+    // 3. Fallback with a timeout as last resort
+    const fallbackTimer = setTimeout(() => {
+      if (mounted && !isReady) {
+        console.log("Using fallback timer in DelayedMapContent");
+        setIsReady(true);
+      }
+    }, 1000);
+    
+    return () => {
+      mounted = false;
+      clearTimeout(fallbackTimer);
+    };
+  }, [map, isReady]);
+  
+  return isReady ? <>{children}</> : null;
+}
 
-  if (error) {
-    return <ErrorScreen error={error} />
+// SafeTileLayer wraps TileLayer with error handling
+function SafeTileLayer({ url, attribution, pane, className, opacity }: { 
+  url: string, 
+  attribution: string,
+  pane?: string,
+  className?: string,
+  opacity?: number
+}) {
+  const [hasError, setHasError] = useState(false);
+  const [isMapReady, setIsMapReady] = useState(false);
+  const map = useMap();
+  
+  useEffect(() => {
+    // Only proceed when the map is fully initialized
+    if (!map) return;
+    
+    try {
+      // Check if map is fully initialized with a safer approach
+      if ((map as any)._loaded) {
+        // If the pane is specified, make sure it exists
+        if (pane && !map.getPane(pane)) {
+          console.log(`Creating pane ${pane} that doesn't exist yet`);
+          map.createPane(pane);
+        }
+        
+        setIsMapReady(true);
+      } else {
+        // Use whenReady as a fallback
+        map.whenReady(() => {
+          setIsMapReady(true);
+        });
+      }
+    } catch (error) {
+      console.error("Error initializing SafeTileLayer:", error);
+      setHasError(true);
+    }
+  }, [map, pane]);
+  
+  // If there was an error rendering, return null
+  if (hasError) {
+    console.warn(`TileLayer with URL ${url} failed to load`);
+    return null;
   }
   
-  // Don't render the map until Leaflet has loaded
-  if (!isLeafletLoaded) {
-    return <LoadingScreen />
+  // Only render the TileLayer when the map is ready
+  if (!isMapReady) return null;
+  
+  return (
+    <ErrorBoundary onError={() => setHasError(true)}>
+      <TileLayer
+        url={url}
+        attribution={attribution}
+        pane={pane}
+        className={className}
+        opacity={opacity}
+      />
+    </ErrorBoundary>
+  );
+}
+
+// Simple ErrorBoundary component
+class ErrorBoundary extends React.Component<{ 
+  children: React.ReactNode, 
+  onError?: () => void 
+}, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode, onError?: () => void }) {
+    super(props);
+    this.state = { hasError: false };
   }
 
-  // Use a fixed tile layer URL for dark mode (inverted by CSS)
-  const tileLayerUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-  const tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
 
+  componentDidCatch(error: any, info: any) {
+    console.error("Error in component:", error, info);
+    if (this.props.onError) {
+      this.props.onError();
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
+}
+
+// Add this MapInitializer component to handle map initialization
+function MapInitializer() {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+
+    // Execute once map is ready
+    map.whenReady(() => {
+      console.log("Map is fully initialized in MapInitializer");
+      
+      // Ensure all panes exist
+      if (!map.getPane('labelsPane')) {
+        try {
+          map.createPane('labelsPane');
+          const pane = map.getPane('labelsPane');
+          if (pane) {
+            pane.style.zIndex = '650';
+            pane.style.pointerEvents = 'none';
+            pane.className += ' leaflet-labels-pane';
+          }
+        } catch (e) {
+          console.error("Error creating labelsPane:", e);
+        }
+      }
+    });
+  }, [map]);
+
+  return null;
+}
+
+// Helper function to spread overlapping markers
+function spreadOverlappingMarkers(activities: Activity[]): Activity[] {
+  // Create a map to group activities by coordinates
+  const locationGroups: { [key: string]: Activity[] } = {};
+  
+  // Group activities by their coordinates
+  activities.forEach(activity => {
+    const locationKey = `${activity.lat.toFixed(6)},${activity.lng.toFixed(6)}`;
+    if (!locationGroups[locationKey]) {
+      locationGroups[locationKey] = [];
+    }
+    locationGroups[locationKey].push(activity);
+  });
+  
+  // Process groups that have more than one activity at the same coordinates
+  const adjustedActivities = activities.map(activity => {
+    const locationKey = `${activity.lat.toFixed(6)},${activity.lng.toFixed(6)}`;
+    const group = locationGroups[locationKey];
+    
+    // If this is a group with overlapping markers
+    if (group && group.length > 1) {
+      // Find this activity's index in the group
+      const activityIndex = group.findIndex(a => a.id === activity.id);
+      
+      // Only adjust position if we found the activity
+      if (activityIndex >= 0) {
+        // Offset distance for spreading markers
+        const offsetDistance = 0.001;
+        
+        // Calculate angle for this marker in the circle
+        const angle = (2 * Math.PI * activityIndex) / group.length;
+        
+        // Calculate new position
+        const newActivity = { ...activity };
+        newActivity.lat = activity.lat + offsetDistance * Math.sin(angle);
+        newActivity.lng = activity.lng + offsetDistance * Math.cos(angle);
+        
+        // Store original coordinates for proper popup positioning
+        newActivity.originalLat = activity.lat;
+        newActivity.originalLng = activity.lng;
+        
+        return newActivity;
+      }
+    }
+    
+    // If no adjustment is needed, return the original activity
+    return activity;
+  });
+  
+  return adjustedActivities;
+}
+
+// Static Map with extremely simplified initialization
+function StaticMap({ activities }: { activities?: Activity[] }) {
+  const [mapReady, setMapReady] = useState(false);
+  const [layersReady, setLayersReady] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const { resolvedTheme } = useTheme();
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const [processedActivities, setProcessedActivities] = useState<Activity[]>([]);
+
+  // Process activities on mount
+  useEffect(() => {
+    if (!activities || activities.length === 0) return;
+    
+    console.log(`Processing ${activities.length} activities for markers`, activities);
+    
+    // Process activities (spread overlapping markers, etc.)
+    try {
+      const spreadActivities = spreadOverlappingMarkers(activities);
+      setProcessedActivities(spreadActivities);
+    } catch (e) {
+      console.error("Error processing activities:", e);
+      setProcessedActivities(activities);
+    }
+  }, [activities]);
+  
+  // Create and position markers when map and activities are ready
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !processedActivities || processedActivities.length === 0) {
+      return;
+    }
+    
+    console.log(`Creating ${processedActivities.length} markers on map`);
+    
+    // Clear any existing markers
+    document.querySelectorAll('.activity-marker-custom').forEach(el => {
+      if (el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+    });
+    
+    // Create markers for each activity
+    processedActivities.forEach((activity) => {
+      try {
+        // Create marker element
+        const markerDiv = document.createElement('div');
+        markerDiv.className = 'activity-marker-custom';
+        markerDiv.id = `marker-${activity.id}`;
+        markerDiv.style.cssText = `
+          width: 30px;
+          height: 30px;
+          background-color: ${getActivityColor(activity.type)};
+          border-radius: 50%;
+          border: 2px solid white;
+          position: absolute;
+          transform: translate(-50%, -50%);
+          box-shadow: 0 0 15px ${getActivityColor(activity.type)}, 0 0 30px ${getActivityColor(activity.type)};
+          z-index: 99999;
+          pointer-events: all;
+          cursor: pointer;
+        `;
+        
+        // Add marker to the DOM (map container's parent for z-index)
+        const mapContainer = mapInstanceRef.current.getContainer();
+        if (mapContainer && mapContainer.parentNode) {
+          mapContainer.parentNode.appendChild(markerDiv);
+        } else {
+          document.body.appendChild(markerDiv);
+        }
+        
+        // Add click handler
+        markerDiv.addEventListener('click', () => {
+          console.log("Marker clicked:", activity);
+          
+          // Show activity details
+          alert(`Activity: ${activity.title} (${activity.type})`);
+        });
+        
+        // Position update function
+        const updatePosition = () => {
+          try {
+            if (!mapInstanceRef.current) return;
+            const map = mapInstanceRef.current;
+            const point = map.latLngToContainerPoint([activity.lat, activity.lng]);
+            
+            // Apply position
+            markerDiv.style.left = `${point.x}px`;
+            markerDiv.style.top = `${point.y}px`;
+          } catch (e) {
+            console.error("Error positioning marker:", e);
+          }
+        };
+        
+        // Update position immediately and on map events
+        updatePosition();
+        
+        // Listen for map movement and update marker positions
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.on('move', updatePosition);
+          mapInstanceRef.current.on('zoom', updatePosition);
+          mapInstanceRef.current.on('resize', updatePosition);
+        }
+      } catch (e) {
+        console.error("Error creating marker:", e, activity);
+      }
+    });
+    
+    // Cleanup function to remove markers when component unmounts
+    return () => {
+      document.querySelectorAll('.activity-marker-custom').forEach(el => {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+    };
+  }, [mapReady, processedActivities, mapInstanceRef.current]);
+
+  // Initialize map on first render with no layers
+  useEffect(() => {
+    if (typeof window === 'undefined' || !L || !mapContainerRef.current) return;
+    
+    try {
+      console.log("Creating map instance...");
+      
+      // Create a map with no layers
+      const mapInstance = L.map(mapContainerRef.current, {
+        center: [0, 0],
+        zoom: 2.5,
+        minZoom: 2,
+        maxZoom: 16,
+        zoomControl: false,
+        attributionControl: false,
+        fadeAnimation: true,
+        markerZoomAnimation: true,
+        preferCanvas: true,
+      });
+      
+      // Store reference
+      mapInstanceRef.current = mapInstance;
+      
+      // Apply styles to container
+      const container = mapInstance.getContainer();
+      if (container) {
+        if (resolvedTheme === 'dark') {
+          container.classList.add("dark-map");
+          container.classList.remove("light-map");
+        } else {
+          container.classList.add("light-map");
+          container.classList.remove("dark-map");
+        }
+        container.style.backgroundColor = '#0a2342'; // Deep blue background
+      }
+      
+      // Create a background div to control the map's background color
+      mapInstance.getContainer().style.background = '#0a2342';
+      
+      // Set boundaries
+      const southWest = L.latLng(-90, -200);
+      const northEast = L.latLng(90, 200);
+      const bounds = L.latLngBounds(southWest, northEast);
+      mapInstance.setMaxBounds(bounds);
+      mapInstance.options.maxBoundsViscosity = 1.0;
+      
+      // Add zoom control manually
+      L.control.zoom({
+        position: 'bottomleft',
+        zoomInTitle: 'Zoom In',
+        zoomOutTitle: 'Zoom Out'
+      }).addTo(mapInstance);
+      
+      // Set initial view
+      if (isMobile) {
+        mapInstance.setView([0, 0], 1.8, { animate: false });
+      } else {
+        mapInstance.setView([0, 0], 2.5, { animate: false });
+      }
+      
+      // Create panes that layers might need
+      mapInstance.createPane('labelsPane');
+      const pane = mapInstance.getPane('labelsPane');
+      if (pane) {
+        pane.style.zIndex = '650';
+        pane.style.pointerEvents = 'none';
+        pane.className += ' leaflet-labels-pane';
+      }
+      
+      // Ensure proper z-index for all panes
+      const ensureCorrectZIndex = () => {
+        // Key map panes that need specific z-index values
+        const mapPanes = mapInstance.getPanes();
+        
+        // Configure z-index for standard panes
+        if (mapPanes.tilePane) mapPanes.tilePane.style.zIndex = '200';
+        if (mapPanes.overlayPane) mapPanes.overlayPane.style.zIndex = '1300';
+        if (mapPanes.shadowPane) mapPanes.shadowPane.style.zIndex = '1400';
+        if (mapPanes.markerPane) mapPanes.markerPane.style.zIndex = '99999';
+        if (mapPanes.tooltipPane) mapPanes.tooltipPane.style.zIndex = '99999';
+        if (mapPanes.popupPane) mapPanes.popupPane.style.zIndex = '99999';
+        
+        console.log("Z-index values configured for map panes");
+      };
+      
+      // Run z-index configuration after map is ready
+      ensureCorrectZIndex();
+      
+      // Signal that map is ready
+      setTimeout(() => {
+        console.log("Map is fully initialized - setting mapReady state");
+        setMapReady(true);
+        
+        // Force a map update to ensure all calculations are correct
+        mapInstance.invalidateSize();
+      }, 100);
+      
+      // Add base and layers with a delay to ensure proper initialization
+      setTimeout(() => {
+        try {
+          if (!L || !mapInstance) return;
+          
+          console.log("Adding base tile layer...");
+          // Change to a more transparent/dark base layer
+          const tileLayerUrl = "https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_nolabels/{z}/{x}/{y}.png";
+          const tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+          
+          L.tileLayer(tileLayerUrl, {
+            attribution: tileAttribution,
+            opacity: 0.4, // Increased from 0.2 to make it more visible
+          }).addTo(mapInstance);
+          
+          // Add labels layer
+          console.log("Adding labels layer...");
+          // Use a layer that shows only labels, roads, and water/forest features
+          const labelsLayerUrl = "https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_only_labels/{z}/{x}/{y}.png";
+          const labelsAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+          
+          L.tileLayer(labelsLayerUrl, {
+            attribution: labelsAttribution,
+            pane: 'labelsPane',
+            opacity: 1.0, // Full opacity for labels
+            className: 'labels-layer'
+          }).addTo(mapInstance);
+          
+          // Add a third layer just for water and natural features with higher opacity
+          const naturesLayerUrl = "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg";
+          const naturesAttribution = '&copy; <a href="https://stamen.com">Stamen Design</a>';
+          
+          L.tileLayer(naturesLayerUrl, {
+            attribution: naturesAttribution,
+            opacity: 0.7, // Increased from 0.5 to make natural features more vibrant
+            pane: 'overlayPane',
+          }).addTo(mapInstance);
+          
+          // Signal that layers are ready
+          setLayersReady(true);
+          
+          // Force map update again to ensure all layers render correctly
+          mapInstance.invalidateSize();
+        } catch (error) {
+          console.error("Error adding layers:", error);
+        }
+      }, 500); // Increased delay for better stability
+      
+      // Return cleanup function
+      return () => {
+        console.log("Cleaning up map instance");
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.remove();
+          mapInstanceRef.current = null;
+        }
+      };
+    } catch (error) {
+      console.error("Error initializing map:", error);
+    }
+  }, [resolvedTheme, isMobile]);
+  
+  // Add layers only after map is fully initialized and with a significant delay
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !L) return;
+    
+    console.log("Map is ready, adding layers after delay...");
+    
+    // Add significant delay to ensure map DOM is fully established
+    const timer = setTimeout(() => {
+      try {
+        const mapInstance = mapInstanceRef.current;
+        if (!mapInstance || !L) return;
+        
+        console.log("Adding base tile layer...");
+        // Change to a more transparent/dark base layer
+        const tileLayerUrl = "https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_nolabels/{z}/{x}/{y}.png";
+        const tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+        
+        L.tileLayer(tileLayerUrl, {
+          attribution: tileAttribution,
+          opacity: 0.4, // Increased from 0.2 to make it more visible
+        }).addTo(mapInstance);
+        
+        // Add labels layer
+        console.log("Adding labels layer...");
+        // Use a layer that shows only labels, roads, and water/forest features
+        const labelsLayerUrl = "https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_only_labels/{z}/{x}/{y}.png";
+        const labelsAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+        
+        L.tileLayer(labelsLayerUrl, {
+          attribution: labelsAttribution,
+          pane: 'labelsPane',
+          opacity: 1.0, // Full opacity for labels
+          className: 'labels-layer'
+        }).addTo(mapInstance);
+        
+        // Add a third layer just for water and natural features with higher opacity
+        const naturesLayerUrl = "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg";
+        const naturesAttribution = '&copy; <a href="https://stamen.com">Stamen Design</a>';
+        
+        L.tileLayer(naturesLayerUrl, {
+          attribution: naturesAttribution,
+          opacity: 0.7, // Increased from 0.5 to make natural features more vibrant
+          pane: 'overlayPane',
+        }).addTo(mapInstance);
+        
+        // Signal that layers are ready
+        setLayersReady(true);
+      } catch (error) {
+        console.error("Error adding layers:", error);
+      }
+    }, 2000); // 2-second delay for ensuring DOM is ready
+    
+    return () => clearTimeout(timer);
+  }, [mapReady]);
+  
   return (
     <div className="w-full h-full relative">
-      {/* Main map container - this is where Leaflet will render */}
-      <div className="w-full h-full z-10 dark-map" />
+      {/* Map container div */}
+      <div 
+        ref={mapContainerRef} 
+        className="w-full h-full z-10 dark-map"
+      />
       
-      {/* Activity info overlay - shown when activity is selected */}
+      {/* Dark background for map boundaries */}
+      <div 
+        className="absolute top-0 left-0 w-full h-full"
+        style={{
+          backgroundColor: '#0a2342',
+          zIndex: -1,
+          backgroundImage: 'radial-gradient(circle at center, rgba(30, 100, 170, 0.3) 0%, rgba(10, 35, 66, 0.1) 50%, rgba(10, 35, 66, 0) 100%)',
+        }}
+      />
+      
+      {/* Map styles */}
       <style jsx global>{`
         .leaflet-container {
-          background-color: #121212 !important;
+          background-color: #0a2342 !important;
         }
         
-        /* Evitar borda branca ao arrastar */
-        .leaflet-map-pane {
-          background-color: #121212;
-        }
-        
-        /* Garantir que o fundo do pane também seja escuro */
-        .leaflet-pane {
-          background-color: #121212;
-        }
-        
-        /* Correção para garantir que efeitos de glow/blur não sejam cortados */
+        /* Forcing markers and interactions to appear on top */
+        .leaflet-marker-pane, 
         .leaflet-marker-icon,
-        .leaflet-marker-shadow {
-          overflow: visible !important;
+        .leaflet-marker-shadow,
+        .leaflet-marker-container {
+          z-index: 99999 !important;
         }
         
-        .leaflet-div-icon {
-          background: transparent !important;
-          border: none !important;
-          overflow: visible !important;
+        .activity-marker, 
+        .activity-marker-container,
+        div[class*='activity-marker'] {
+          z-index: 99999 !important;
         }
         
-        /* Melhorar a renderização do marker */
-        .activity-marker {
-          transform-style: preserve-3d;
-          will-change: transform;
-          backface-visibility: hidden;
+        /* Particle layers need to be on top too */
+        .particle-container,
+        .leaflet-particle-layer,
+        .connection-lines-container,
+        canvas.leaflet-layer {
+          z-index: 99999 !important;
         }
         
-        /* Estilos customizados para o controle de zoom */
+        /* Reset stacking context */
+        .leaflet-map-pane {
+          position: absolute !important;
+          z-index: 0 !important;
+          background-color: #0a2342;
+        }
+        
+        .leaflet-tile-pane {
+          z-index: 200 !important;
+        }
+        
+        .leaflet-overlay-pane {
+          z-index: 1300 !important;
+          mix-blend-mode: color-dodge !important;
+          filter: saturate(1.2) contrast(1.1) !important;
+        }
+        
+        .leaflet-shadow-pane {
+          z-index: 1400 !important;
+        }
+        
+        .leaflet-marker-pane {
+          z-index: 99999 !important;
+        }
+        
+        .leaflet-tooltip-pane {
+          z-index: 99999 !important;
+        }
+        
+        .leaflet-popup-pane {
+          z-index: 99999 !important;
+        }
+        
+        /* Make sure particle layer is visible */
+        .leaflet-particle-layer {
+          z-index: 1300 !important;
+          pointer-events: none !important;
+        }
+        
+        /* Style for the labels layer */
+        .labels-layer {
+          mix-blend-mode: screen !important;
+        }
+        
+        /* Ensure the pane has the right z-index and styles */
+        .leaflet-labels-pane {
+          z-index: 650 !important;
+          pointer-events: none !important;
+        }
+        
+        .dark-map .labels-layer {
+          mix-blend-mode: screen !important;
+        }
+        
+        /* Custom styles for zoom controls */
         .leaflet-control-zoom {
           margin-left: 15px !important;
           margin-bottom: 80px !important;
@@ -1498,141 +2000,148 @@ export default function MapClient({ activities: propActivities, initialSelectedA
         .leaflet-control-zoom-in {
           border-bottom: 1px solid rgba(8, 145, 178, 0.5) !important;
         }
-        
-        /* Hide scrollbar for all browsers */
-        ::-webkit-scrollbar {
-          display: none;
-        }
-        
-        html {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        }
-        
-        body {
-          overflow: hidden;
-        }
-        
-        /* Scanline animation effect */
-        @keyframes scanlineAnimation {
-          0% {
-            transform: translateY(0);
-            opacity: 0.03;
-          }
-          50% {
-            opacity: 0.04;
-          }
-          100% {
-            transform: translateY(20px);
-            opacity: 0.03;
-          }
-        }
-        
-        .scanline-effect {
-          animation: scanlineAnimation 8s linear infinite;
-          will-change: transform, opacity;
-        }
-        
-        /* Grid overlay subtle pulse */
-        @keyframes gridPulse {
-          0% {
-            opacity: 0.3;
-          }
-          50% {
-            opacity: 0.35;
-          }
-          100% {
-            opacity: 0.3;
-          }
-        }
-        
-        .grid-effect {
-          animation: gridPulse 15s ease-in-out infinite;
-          will-change: opacity;
-        }
-        
-        /* Disable console debug logging */
-        .leaflet-debug {
-          display: none !important;
-        }
       `}</style>
       
-      <div className="absolute inset-0 z-10">
-        <MapContainer
-          key={mapKey} /* Add key to control remounting */
-          center={[20, 0]}
-          zoom={2.5}
-          className="w-full h-full"
-          zoomControl={false}
-          attributionControl={false}
-          fadeAnimation={true}
-          markerZoomAnimation={true}
+      {/* Map overlays */}
+      <MapOverlays />
+      
+      {/* Labels toggle button - just a placeholder for now */}
+      <div className="absolute top-4 right-4 z-20">
+        <button
+          className="flex items-center justify-center w-10 h-10 rounded-full bg-black/60 backdrop-blur-sm border border-cyan-500/30 text-white shadow-lg hover:bg-black/80 transition-all"
+          title="Toggle Labels"
         >
-          {/* Background escuro para quando o mapa é arrastado além dos limites */}
-          <div 
-            style={{
-              position: 'absolute',
-              top: '-1000%',
-              left: '-1000%',
-              width: '3000%',
-              height: '3000%',
-              zIndex: -1,
-              backgroundColor: '#121212',
-              pointerEvents: 'none'
-            }}
-          />
-          
-          <TileLayer
-            url={tileLayerUrl}
-            attribution={tileAttribution}
-          />
-          <ZoomControl position="bottomleft" zoomInTitle="Zoom In" zoomOutTitle="Zoom Out" />
-          <MapController />
-          <MapOverlays />
-          
-          {/* Renderiza as atividades */}
-          {filteredActivities.map((activity) => (
-            <ActivityNode key={activity.id} activity={activity} />
-          ))}
-          
-          {/* Conectar as atividades com linhas */}
-          <ConnectionLines activities={filteredActivities.map(activity => {
-            try {
-              return convertToBaseActivity(activity);
-            } catch (error) {
-              console.error("Error converting activity for ConnectionLines:", error, activity);
-              // Return a minimal valid BaseActivity to prevent rendering errors
-              return {
-                id: activity.id,
-                lat: activity.lat,
-                lng: activity.lng,
-                type: activity.type,
-                title: activity.title,
-                photos: []
-              };
-            }
-          })} />
-          
-          {/* Efeito de partículas */}
-          <ParticleEffect activities={filteredActivities.map(activity => {
-            try {
-              return convertToBaseActivity(activity);
-            } catch (error) {
-              console.error("Error converting activity for ParticleEffect:", error, activity);
-              // Return a minimal valid BaseActivity to prevent rendering errors
-              return {
-                id: activity.id,
-                lat: activity.lat,
-                lng: activity.lng,
-                type: activity.type,
-                title: activity.title,
-                photos: []
-              };
-            }
-          })} />
-        </MapContainer>
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            width="18" 
+            height="18" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+          >
+            <path d="M6 9h6"></path>
+            <path d="M4 14h8"></path>
+            <path d="M16 4h2"></path>
+            <path d="M21 4h1"></path>
+            <path d="M21 9h-2.5"></path>
+            <path d="M19 14h-2"></path>
+            <path d="M14 20l1.5-8"></path>
+            <path d="M9 18L5 6V4"></path>
+          </svg>
+        </button>
       </div>
     </div>
-  )
+  );
+}
+
+export default function MapClient({ activities: propActivities, initialSelectedActivity }: MapClientProps) {
+  const [activities, setActivities] = useState<Activity[]>(propActivities || []);
+  const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [error, setError] = useState<string|null>(null);
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>({
+    query: '',
+    types: [],
+    expanded: false
+  });
+  const isLeafletLoaded = useLeaflet();
+
+  // Fetch activities
+  useEffect(() => {
+    const fetchActivities = async () => {
+      try {
+        // If we already have activities from props, use them
+        if (propActivities && propActivities.length > 0) {
+          const spreadActivities = spreadOverlappingMarkers(propActivities);
+          setActivities(spreadActivities);
+          setFilteredActivities(spreadActivities);
+          setLoading(false);
+          setInitialLoadComplete(true);
+          return;
+        }
+
+        // Otherwise fetch from Supabase
+        const supabaseClient = getSupabaseBrowserClient();
+        if (!supabaseClient) {
+          throw new Error('Supabase client not initialized');
+        }
+
+        const { data, error: supabaseError } = await supabaseClient
+          .from('ecotrack')
+          .select('*');
+
+        if (supabaseError) {
+          throw supabaseError;
+        }
+          
+        if (!data) {
+          setActivities([]);
+          setFilteredActivities([]);
+          setLoading(false);
+          setInitialLoadComplete(true);
+          return;
+        }
+        
+        // Map the database schema to the Activity interface
+        const activitiesData = data.map(item => ({
+          id: item.id ? item.id.toString() : `id-${Math.random().toString(36).substr(2, 9)}`,
+          lat: item.latitude !== undefined && item.latitude !== null ? item.latitude : (item.lat || 0),
+          lng: item.longitude !== undefined && item.longitude !== null ? item.longitude : (item.lng || 0),
+          country: item.country || 'Unknown',
+          adress: item.street ? `${item.city || ''}, ${item.street}` : (item.city || ''),
+          city: item.city,
+          type: item.type || 'other',
+          title: item.title || 'Untitled Activity',
+          responsible: item.responsible || 'Unknown',
+          photos: item.photos || null,
+          hyperlink: item.hyperlink || null,
+          created_at: item.created_at || null,
+          description: item.description || '',
+        }));
+        
+        console.log(`Loaded ${activitiesData.length} activities from ecotrack table`);
+        
+        // Filter out activities with invalid coordinates
+        const validActivities = activitiesData.filter(activity => 
+          !(activity.lat === 0 && activity.lng === 0)
+        );
+        
+        // Spread out overlapping markers
+        const spreadActivities = spreadOverlappingMarkers(validActivities);
+        
+        setActivities(spreadActivities);
+        setFilteredActivities(spreadActivities);
+      } catch (err) {
+        console.error('Error fetching activities:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error fetching activities');
+      } finally {
+        setLoading(false);
+        setInitialLoadComplete(true);
+      }
+    };
+
+    fetchActivities();
+  }, [propActivities]);
+
+  // Only show loading screen during initial load
+  if (loading && !initialLoadComplete) {
+    return <LoadingScreen />;
+  }
+
+  if (error) {
+    return <ErrorScreen error={error} />;
+  }
+  
+  // Don't render the map until Leaflet has loaded
+  if (!isLeafletLoaded) {
+    return <LoadingScreen />;
+  }
+
+  // Render the simplified static map
+  return <StaticMap activities={filteredActivities.length > 0 ? filteredActivities : activities} />;
 }
 

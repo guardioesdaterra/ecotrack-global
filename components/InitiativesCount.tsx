@@ -6,16 +6,12 @@ import { supabase } from "@/lib/supabaseClient";
 export interface ImpactStats {
   projects: number;
   countries: number;
-  directBeneficiaries: number;
-  indirectBeneficiaries: number;
 }
 
 export function ImpactStats() {
   const [stats, setStats] = useState<ImpactStats>({
     projects: 0,
-    countries: 0,
-    directBeneficiaries: 0,
-    indirectBeneficiaries: 0
+    countries: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +22,10 @@ export function ImpactStats() {
       setError(null);
       
       try {
+        if (!supabase) {
+          throw new Error('Supabase client not initialized');
+        }
+        
         // Fetch all activities
         const { data, error } = await supabase
           .from("activities")
@@ -37,9 +37,7 @@ export function ImpactStats() {
           // Use fallback data for demo
           setStats({
             projects: 32,
-            countries: 86,
-            directBeneficiaries: 12500,
-            indirectBeneficiaries: 42000
+            countries: 86
           });
         } else if (data && data.length > 0) {
           // Calculate stats from the real data
@@ -54,28 +52,15 @@ export function ImpactStats() {
             }
           });
           
-          // 3 & 4. Sum direct and indirect beneficiaries
-          let directSum = 0;
-          let indirectSum = 0;
-          
-          data.forEach(activity => {
-            directSum += activity.direct_benefited || 0;
-            indirectSum += activity.indirect_benefited || 0;
-          });
-          
           setStats({
             projects: projectCount,
-            countries: uniqueCountries.size,
-            directBeneficiaries: directSum,
-            indirectBeneficiaries: indirectSum
+            countries: uniqueCountries.size
           });
         } else {
           // No data, use fallback
           setStats({
             projects: 32,
-            countries: 86,
-            directBeneficiaries: 12500,
-            indirectBeneficiaries: 42000
+            countries: 86
           });
         }
       } catch (err) {
@@ -84,9 +69,7 @@ export function ImpactStats() {
         // Use fallback data for demo
         setStats({
           projects: 32,
-          countries: 86,
-          directBeneficiaries: 12500,
-          indirectBeneficiaries: 42000
+          countries: 86
         });
       } finally {
         setLoading(false);
@@ -120,30 +103,3 @@ export function CountriesCount() {
   return <span className="text-xl font-bold text-cyan-400">{stats.countries}</span>;
 }
 
-export function DirectBeneficiariesCount() {
-  const { stats, loading, error } = ImpactStats();
-  
-  if (loading) return <span className="text-gray-400">...</span>;
-  if (error) return <span className="text-xl font-bold text-purple-400">12.5K</span>;
-  
-  // Format large numbers
-  const formatted = stats.directBeneficiaries > 1000 
-    ? `${(stats.directBeneficiaries / 1000).toFixed(1)}K` 
-    : stats.directBeneficiaries;
-    
-  return <span className="text-xl font-bold text-purple-400">{formatted}</span>;
-}
-
-export function IndirectBeneficiariesCount() {
-  const { stats, loading, error } = ImpactStats();
-  
-  if (loading) return <span className="text-gray-400">...</span>;
-  if (error) return <span className="text-xl font-bold text-amber-400">42K</span>;
-  
-  // Format large numbers
-  const formatted = stats.indirectBeneficiaries > 1000 
-    ? `${(stats.indirectBeneficiaries / 1000).toFixed(1)}K` 
-    : stats.indirectBeneficiaries;
-    
-  return <span className="text-xl font-bold text-amber-400">{formatted}</span>;
-}

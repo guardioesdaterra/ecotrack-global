@@ -16,25 +16,44 @@ const nextConfig = {
   // Disable React Strict Mode to prevent double mounting issues with Leaflet
   reactStrictMode: false,
   eslint: {
+    // Ignoring ESLint errors for deployment as we fix up integration issues
     ignoreDuringBuilds: true,
   },
   typescript: {
+    // Ignoring type checking for deployment as we fix up integration issues
     ignoreBuildErrors: true,
   },
   images: {
-    unoptimized: true,
+    domains: ['oqzuskgsgufbntufufcz.supabase.co'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'oqzuskgsgufbntufufcz.supabase.co',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
   },
   experimental: {
     webpackBuildWorker: true,
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
-  serverExternalPackages: ['leaflet'],
-  allowedDevOrigins: ['localhost', '10.0.0.132'],
+  // Ensure Leaflet is bundled correctly
+  serverExternalPackages: ['leaflet', 'leaflet.markercluster'],
   webpack: (config) => {
-    config.externals = [...config.externals, { leaflet: 'L' }]
+    // Externalize Leaflet to avoid SSR issues
+    config.externals = [...(config.externals || []), { leaflet: 'L' }]
+    
+    // Handle Leaflet.MarkerCluster
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'leaflet.markercluster': false,
+    }
+    
     return config
-  }
+  },
+  // Use standalone output for optimized Vercel deployment
+  output: 'standalone',
 }
 
 if (userConfig) {

@@ -66,8 +66,6 @@ interface FormState {
   existingPhotos: string[];
   deletedPhotos: string[];
   locationType: 'coordinates' | 'address';
-  direct_benefited?: number;
-  indirect_benefited?: number;
 }
 
 interface EditFormProps {
@@ -101,9 +99,7 @@ export default function EditForm({ activityId }: EditFormProps) {
     imagePreview: [],
     existingPhotos: [],
     deletedPhotos: [],
-    locationType: 'address',
-    direct_benefited: 0,
-    indirect_benefited: 0
+    locationType: 'address'
   });
   
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -251,9 +247,7 @@ export default function EditForm({ activityId }: EditFormProps) {
         imagePreview: [],
         existingPhotos: photoArray,
         deletedPhotos: [],
-        locationType: 'address',
-        direct_benefited: data.direct_benefited || 0,
-        indirect_benefited: data.indirect_benefited || 0
+        locationType: 'address'
       });
       
     } catch (error: any) {
@@ -624,8 +618,6 @@ export default function EditForm({ activityId }: EditFormProps) {
         email: formState.email,
         hyperlink: formState.hyperlink,
         photos: combinedPhotos.length > 0 ? JSON.stringify(combinedPhotos) : null,
-        direct_benefited: formState.direct_benefited,
-        indirect_benefited: formState.indirect_benefited,
         updated_at: new Date().toISOString(),
       };
       
@@ -759,39 +751,7 @@ export default function EditForm({ activityId }: EditFormProps) {
               />
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2.5">
-                <Label htmlFor="direct_benefited" className="text-cyan-300">
-                  Direct Beneficiaries (optional)
-                </Label>
-                <input
-                  id="direct_benefited"
-                  name="direct_benefited"
-                  type="number"
-                  min="0"
-                  value={formState.direct_benefited || ''}
-                  onChange={handleNumberInput}
-                  placeholder="Number of people directly impacted"
-                  className="flex h-10 w-full rounded-md border border-cyan-900/40 bg-gray-800/80 px-3 py-2 text-sm focus:border-cyan-500 focus:ring-cyan-500"
-                />
-              </div>
-              
-              <div className="space-y-2.5">
-                <Label htmlFor="indirect_benefited" className="text-cyan-300">
-                  Indirect Beneficiaries (optional)
-                </Label>
-                <input
-                  id="indirect_benefited"
-                  name="indirect_benefited"
-                  type="number"
-                  min="0"
-                  value={formState.indirect_benefited || ''}
-                  onChange={handleNumberInput}
-                  placeholder="Number of people indirectly impacted"
-                  className="flex h-10 w-full rounded-md border border-cyan-900/40 bg-gray-800/80 px-3 py-2 text-sm focus:border-cyan-500 focus:ring-cyan-500"
-                />
-              </div>
-            </div>
+            {/* Removed beneficiaries fields */}
           </div>
         );
       case 2:

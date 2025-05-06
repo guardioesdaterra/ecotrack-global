@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+DO NOT RUN npm run build OR npm run dev:https 
+
+im already running it, and it updates automatically

@@ -54,14 +54,16 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     // Apply reduced animation class if needed
     const animationClass = shouldReduceAnimations ? "!transition-none" : ""
     
-    // When asChild is true, Slot expects a single child
+    // When asChild is true, pass a single child element
     if (asChild) {
       return (
         <Comp
           className={cn(buttonVariants({ variant, size, className }), animationClass)}
           ref={ref}
           {...props}
-        />
+        >
+          {children}
+        </Comp>
       )
     }
     

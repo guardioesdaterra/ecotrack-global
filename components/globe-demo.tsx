@@ -1,5 +1,5 @@
 import { Globe } from "@/components/ui/globe"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useMediaQuery } from "@/hooks/use-media-query"
 
 type MarkerType = { location: [number, number]; size: number };
@@ -7,6 +7,7 @@ type MarkerType = { location: [number, number]; size: number };
 export function GlobeDemo() {
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [lowPerformance, setLowPerformance] = useState(false)
+  const globeRef = useRef<HTMLDivElement>(null)
   
   // Detect low performance devices
   useEffect(() => {
@@ -24,9 +25,8 @@ export function GlobeDemo() {
   // Optimize settings based on device capabilities
   const getOptimizedConfig = () => {
     const baseConfig = {
-      width: isMobile ? 400 : 1400,
-      height: isMobile ? 400 : 1400,
-      onRender: () => {},
+      width: isMobile ? 300 : 1000,
+      height: isMobile ? 300 : 1000,
       devicePixelRatio: lowPerformance ? 1 : 2,
       phi: 0,
       theta: 0.2,
@@ -38,6 +38,11 @@ export function GlobeDemo() {
       glowColor: [0.9, 0, 0.1] as [number, number, number],
       mapBrightness: 70,
       opacity: 0.888,
+      // Set extreme sensitivity for rapid rotation 
+      dragSensitivity: 5, // 5x more sensitive than default
+      rotationSpeedMultiplier: 20, // Much faster rotation
+      enableFastDrag: true, // Enable our custom high-speed rotation
+      onRender: () => {}, // Required by COBE
     };
 
     // Enhanced markers with larger sizes for better visibility
@@ -68,8 +73,16 @@ export function GlobeDemo() {
   };
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
-      <div style={{ filter: 'invert(100%)' }} className="w-full h-full">
+    <div 
+      className={`relative flex items-center justify-center ${isMobile ? 'scale-75' : ''}`}
+      ref={globeRef}
+      style={{ 
+        width: '100%', 
+        height: '100%',
+        transform: isMobile ? 'scale(0.8)' : 'none'
+      }}
+    >
+      <div className="w-full h-full" style={{ filter: 'invert(100%)' }}>
         <Globe className="w-full h-full" config={getOptimizedConfig()} />
       </div>
       <div className="pointer-events-none absolute inset-0 h-full bg-[radial-gradient(circle_at_50%_50%,rgba(0,0,0,0),rgba(0,0,0,0.2))]" />

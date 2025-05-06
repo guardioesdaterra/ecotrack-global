@@ -104,7 +104,7 @@ const initCanvasLayer = () => {
       this._map = map;
       this._canvas = L.DomUtil.create('canvas', 'leaflet-layer leaflet-particle-layer');
       this._canvas.style.pointerEvents = 'none';
-      this._canvas.style.zIndex = 1000;
+      this._canvas.style.zIndex = '500';
       this._canvas.style.position = 'absolute';
       this._canvas.style.width = '100%';
       this._canvas.style.height = '100%';
@@ -113,7 +113,27 @@ const initCanvasLayer = () => {
       this._canvas.width = size.x;
       this._canvas.height = size.y;
       
-      map._panes.overlayPane.appendChild(this._canvas);
+      // Add safety check before accessing overlayPane
+      if (map._panes && map._panes.overlayPane) {
+        try {
+          map._panes.overlayPane.appendChild(this._canvas);
+        } catch (error) {
+          console.error("Error appending canvas to overlayPane:", error);
+        }
+      } else {
+        console.warn("Map overlay pane not available");
+        // Create a fallback in the map container
+        try {
+          const container = map.getContainer();
+          if (container) {
+            // Add to container with lower z-index
+            this._canvas.style.zIndex = "400";
+            container.appendChild(this._canvas);
+          }
+        } catch (e) {
+          console.error("Cannot append canvas to map:", e);
+        }
+      }
       
       // Listen to more map events to ensure proper rendering
       map.on('movestart', this._reset, this);
@@ -267,49 +287,64 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
     
     // Remove old container if it exists
     const oldContainer = document.querySelector('.particle-container');
-    if (oldContainer) {
-      oldContainer.remove();
+    if (oldContainer && oldContainer.parentNode) {
+      oldContainer.parentNode.removeChild(oldContainer);
     }
 
-    // Create a new container for particles
-    const container = document.createElement('div');
-    container.className = 'particle-container';
-    container.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 1000;
-      overflow: hidden;
-    `;
-    
-    map.getContainer().appendChild(container);
-    containerRef.current = container;
-
-    // Add custom CSS for particles
-    const style = document.createElement('style');
-    style.textContent = `
-      .map-particle {
+    try {
+      // Create a new container for particles
+      const container = document.createElement('div');
+      container.className = 'particle-container';
+      container.style.cssText = `
         position: absolute;
-        border-radius: 50%;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
         pointer-events: none;
-        will-change: transform;
-        transform: translate(-50%, -50%);
-        box-shadow: 0 0 10px currentColor, 0 0 5px currentColor;
-      }
-    `;
-    document.head.appendChild(style);
+        z-index: 1500;
+        overflow: hidden;
+      `;
+      
+      const mapContainer = map.getContainer();
+      if (mapContainer) {
+        // Add directly to map parent to avoid z-index context issues
+        if (mapContainer.parentNode) {
+          mapContainer.parentNode.appendChild(container);
+        } else {
+          document.body.appendChild(container);
+        }
+        containerRef.current = container;
 
-    // Initialize the map positioning system
-    map.invalidateSize();
+        // Add custom CSS for particles
+        const style = document.createElement('style');
+        style.textContent = `
+          .map-particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            will-change: transform;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px currentColor, 0 0 5px currentColor;
+          }
+        `;
+        if (document.head) {
+          document.head.appendChild(style);
+        }
+
+        // Initialize the map positioning system
+        map.invalidateSize();
+      }
+    } catch (error) {
+      console.error("Error creating particle container:", error);
+    }
     
     // Clean up on unmount
     return () => {
-      if (container && container.parentNode) {
-        container.parentNode.removeChild(container);
+      if (containerRef.current && containerRef.current.parentNode) {
+        containerRef.current.parentNode.removeChild(containerRef.current);
       }
+      const style = document.querySelector('style.particle-style');
       if (style && style.parentNode) {
         style.parentNode.removeChild(style);
       }
@@ -334,7 +369,7 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
     const shuffledActivities = shuffleArray([...activities]);
     
     // Track connections per activity (limit to 4 per activity)
-    const connectionsPerActivity = new Map<number, number>();
+    const connectionsPerActivity = new Map<string, number>();
     shuffledActivities.forEach(activity => {
       connectionsPerActivity.set(activity.id, 0);
     });
@@ -406,19 +441,21 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
         particleEl.style.color = color;
         particleEl.style.opacity = '0.8';
         
-        containerRef.current?.appendChild(particleEl);
-        
-        // Create particle object
-        particles.push({
-          x: 0,
-          y: 0,
-          size,
-          speed: Math.random() * 0.6 + 0.3,
-          connection,
-          progress,
-          color,
-          el: particleEl
-        });
+        if (containerRef.current) {
+          containerRef.current.appendChild(particleEl);
+          
+          // Create particle object
+          particles.push({
+            x: 0,
+            y: 0,
+            size,
+            speed: Math.random() * 0.6 + 0.3,
+            connection,
+            progress,
+            color,
+            el: particleEl
+          });
+        }
       }
     });
     
@@ -534,58 +571,71 @@ export function ConnectionLines({ activities }: { activities: Activity[] }) {
   const frameRef = useRef<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Create container and canvas for connections
+  // Initialize the canvas for drawing connections
   useEffect(() => {
     if (!map || !L) return;
     
     // Remove old container if it exists
-    const oldContainer = document.querySelector('.connections-container');
-    if (oldContainer) {
-      oldContainer.remove();
+    const oldContainer = document.querySelector('.connection-lines-container');
+    if (oldContainer && oldContainer.parentNode) {
+      oldContainer.parentNode.removeChild(oldContainer);
     }
-
-    // Create a new container and canvas
-    const container = document.createElement('div');
-    container.className = 'connections-container';
-    container.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 399;
-    `;
     
-    const canvas = document.createElement('canvas');
-    canvas.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-    `;
-    
-    // Set canvas size to match map
-    const size = map.getSize();
-    canvas.width = size.x;
-    canvas.height = size.y;
-    
-    container.appendChild(canvas);
-    map.getContainer().appendChild(container);
-    
-    containerRef.current = container;
-    canvasRef.current = canvas;
-    
-    // Initialize the map positioning system
-    map.invalidateSize();
-    
-    setIsInitialized(true);
+    try {
+      // Create a new container for the canvas
+      const container = document.createElement('div');
+      container.className = 'connection-lines-container';
+      container.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1400;
+      `;
+      
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      `;
+      
+      // Set canvas size to match map
+      const size = map.getSize();
+      canvas.width = size.x;
+      canvas.height = size.y;
+      
+      container.appendChild(canvas);
+      
+      const mapContainer = map.getContainer();
+      if (mapContainer) {
+        // Add directly to map parent to avoid z-index context issues
+        if (mapContainer.parentNode) {
+          mapContainer.parentNode.appendChild(container);
+        } else {
+          document.body.appendChild(container);
+        }
+        
+        containerRef.current = container;
+        canvasRef.current = canvas;
+        
+        // Initialize the map positioning system
+        map.invalidateSize();
+        
+        setIsInitialized(true);
+      }
+    } catch (error) {
+      console.error("Error creating connection lines container:", error);
+    }
     
     // Clean up on unmount
     return () => {
-      if (container && container.parentNode) {
-        container.parentNode.removeChild(container);
+      if (containerRef.current && containerRef.current.parentNode) {
+        containerRef.current.parentNode.removeChild(containerRef.current);
       }
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);

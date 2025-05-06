@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
 import Image from "next/image"
 import { animate, createScope } from "animejs"
-import { createClient } from "@/utils/supabase/client"
+import { createBrowserClient } from "@supabase/ssr"
 
 interface ViewActivityProps {
   activityId: string;
@@ -27,8 +27,6 @@ interface Activity {
   user_id?: string;
   city?: string;
   photos?: string[];
-  direct_benefited?: number;
-  indirect_benefited?: number;
   email?: string;
   street?: string;
   hyperlink?: string;
@@ -38,7 +36,7 @@ interface Activity {
 export default function ViewActivity({ activityId }: ViewActivityProps) {
   const { hideOverlay, showOverlay } = useOverlay()
   const { user } = useAuth()
-  const supabase = createClient<Database>(
+  const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
@@ -398,40 +396,6 @@ export default function ViewActivity({ activityId }: ViewActivityProps) {
           )}
         </div>
         
-        {/* Beneficiaries section */}
-        {(activity.direct_benefited || activity.indirect_benefited) && (
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 mb-3 flex items-center">
-              <Users className="mr-2 h-4 w-4 text-cyan-400" />
-              Beneficiaries
-            </h3>
-            
-            <div className="grid grid-cols-2 gap-3">
-              {activity.direct_benefited !== undefined && activity.direct_benefited > 0 && (
-                <div className="p-4 rounded-lg backdrop-blur-sm bg-gray-900/50 border border-gray-800">
-                  <p className="text-xs text-gray-400 mb-1">Direct Beneficiaries</p>
-                  <p className="text-xl font-semibold text-white">{activity.direct_benefited.toLocaleString()}</p>
-                </div>
-              )}
-              
-              {activity.indirect_benefited !== undefined && activity.indirect_benefited > 0 && (
-                <div className="p-4 rounded-lg backdrop-blur-sm bg-gray-900/50 border border-gray-800">
-                  <p className="text-xs text-gray-400 mb-1">Indirect Beneficiaries</p>
-                  <p className="text-xl font-semibold text-white">{activity.indirect_benefited.toLocaleString()}</p>
-                </div>
-              )}
-              
-              {activity.direct_benefited && activity.indirect_benefited && (
-                <div className="col-span-2 p-4 rounded-lg backdrop-blur-sm bg-gray-900/50 border border-gray-800">
-                  <p className="text-xs text-gray-400 mb-1">Total Impact</p>
-                  <p className="text-xl font-semibold text-white">
-                    {(activity.direct_benefited + activity.indirect_benefited).toLocaleString()}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
       
       {/* Footer with actions */}

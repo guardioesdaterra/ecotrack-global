@@ -4,14 +4,14 @@ import React, { useEffect, useRef, useState } from "react"
 import { animate, createScope, createSpring } from "animejs"
 import { ArrowRight, Calendar, BarChart3, Globe, Leaf, MapPin, Plus, Shield, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { createBrowserClient } from "@supabase/ssr"
-import type { Database } from "@/types/supabase"
 import { useRouter } from "next/navigation"
 import { useOverlay } from "@/contexts/overlay-context"
 import { useAuth } from "@/contexts/auth-context"
 import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 import Link from "next/link"
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface UserActivity {
   id: string;
@@ -25,8 +25,6 @@ interface UserActivity {
   user_id?: string;
   city?: string;
   photos?: string;
-  direct_benefited?: number;
-  indirect_benefited?: number;
   email?: string;
   street?: string;
   hyperlink?: string;
@@ -36,24 +34,18 @@ interface StatsType {
   totalActivities: number;
   countries: number;
   recentActivity: string;
-  totalBeneficiaries: number;
 }
 
 export default function MonitorPage() {
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  const { user } = useAuth() 
+  const { user } = useAuth()
   const { showOverlay } = useOverlay()
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activities, setActivities] = useState<UserActivity[]>([])
-  const [stats, setStats] = useState<StatsType>({ 
+  const [stats, setStats] = useState<StatsType>({
     totalActivities: 0,
     countries: 0,
-    recentActivity: '—',
-    totalBeneficiaries: 0
+    recentActivity: '—'
   })
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -79,9 +71,108 @@ export default function MonitorPage() {
     )
 
   useEffect(() => {
-    // Fetch activities
-    fetchActivities()
+    // Don't try to fetch for SSR/SSG
+    if (typeof window === 'undefined') {
+      setIsLoading(false);
+      return;
+    }
     
+    // Wait for auth to initialize
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchActivities = async () => {
+      setIsLoading(true)
+      setError(null)
+      
+      try {
+        const supabase = getSupabaseBrowserClient();
+        if (!supabase) {
+          throw new Error('Supabase client is not initialized');
+        }
+        
+        const { data, error } = await supabase
+          .from('ecotrack')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+        
+        if (error) {
+          throw new Error(`Database error: ${error.message}`);
+        }
+
+        if (!data || data.length === 0) {
+          // This is not an error - just no activities for this user
+          setActivities([]);
+          setStats({
+            totalActivities: 0,
+            countries: 0,
+            recentActivity: '—'
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        const activities = data;
+        setActivities(activities);
+        
+        // Calculate stats
+        const uniqueCountries = new Set(activities.map(a => a.country)).size;
+        const recentActivity = activities[0].created_at 
+          ? new Date(activities[0].created_at).toLocaleDateString()
+          : 'Unknown';
+        
+        setStats({
+          totalActivities: activities.length,
+          countries: uniqueCountries,
+          recentActivity: recentActivity
+        });
+        
+        // Cache the data in localStorage
+        try {
+          localStorage.setItem('user_activities', JSON.stringify(activities));
+          localStorage.setItem('user_activities_timestamp', Date.now().toString());
+        } catch (e) {
+          console.warn('Failed to cache activities:', e);
+        }
+      } catch (err) {
+        console.error('Error fetching user activities:', err);
+        setError(`Failed to load your activities: ${err instanceof Error ? err.message : String(err)}`);
+        
+        // Try to load from localStorage as a fallback
+        try {
+          const cachedData = localStorage.getItem('user_activities');
+          if (cachedData) {
+            console.log('Using cached user activities');
+            const activities = JSON.parse(cachedData);
+            setActivities(activities);
+            
+            // Calculate stats from cached data
+            const uniqueCountries = new Set(activities.map((a: UserActivity) => a.country)).size;
+            const recentActivity = activities[0].created_at 
+              ? new Date(activities[0].created_at).toLocaleDateString()
+              : 'Unknown';
+            
+            setStats({
+              totalActivities: activities.length,
+              countries: uniqueCountries,
+              recentActivity: recentActivity
+            });
+          }
+        } catch (cacheErr) {
+          console.error('Failed to load cached user activities:', cacheErr);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchActivities()
+  }, [user])
+
+  useEffect(() => {
     // Initialize animations with anime.js v4 createScope pattern
     if (!pageContainerRef.current) return;
     
@@ -175,60 +266,6 @@ export default function MonitorPage() {
       ease: 'outQuad'
     });
   }, [filteredActivities, isLoading]);
-  
-  const fetchActivities = async () => {
-    if (!user) return
-    
-    setIsLoading(true)
-    setError(null)
-    
-    try {
-      const { data, error } = await supabase
-        .from('ecotrack')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-      
-      if (error) throw new Error(error.message)
-
-      const activities = data || []
-      setActivities(activities)
-      
-      // Calculate stats
-      const uniqueCountries = new Set(activities.map(a => a.country).filter(Boolean))
-      const lastActivity = activities[0]?.created_at ? formatDate(activities[0].created_at) : '—'
-      const totalBeneficiaries = activities.reduce((sum, activity) => {
-        return sum + (activity.direct_benefited || 0) + (activity.indirect_benefited || 0)
-      }, 0)
-      
-      setStats({
-        totalActivities: activities.length,
-        countries: uniqueCountries.size,
-        recentActivity: lastActivity,
-        totalBeneficiaries
-      })
-      
-    } catch (err: any) {
-      console.error("Error fetching activities:", err)
-      setError(err.message)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-  
-  // Helper function to format dates
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString)
-      return new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-      }).format(date)
-    } catch (e) {
-      return "Unknown date"
-    }
-  }
   
   // Get color theme for activity type
   const getActivityTheme = (type: string) => {
@@ -542,4 +579,18 @@ export default function MonitorPage() {
       </div>
     </div>
   )
+}
+
+// Helper function to format dates
+const formatDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString)
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    }).format(date)
+  } catch (e) {
+    return "Unknown date"
+  }
 }

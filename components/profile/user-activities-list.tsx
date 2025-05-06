@@ -19,9 +19,11 @@ interface Activity {
   photos?: string
 }
 
+import type { OverlayType } from "@/contexts/overlay-context"
+
 interface UserActivitiesListProps {
   activities: Activity[]
-  showOverlay: (type: string, activityId?: string) => void
+  showOverlay: (type: OverlayType, activityId?: string) => void
 }
 
 // Memoized functional component to prevent unnecessary re-renders

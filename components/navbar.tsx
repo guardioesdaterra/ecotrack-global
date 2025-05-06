@@ -27,7 +27,8 @@ import {
   Plus,
   Clock,
   Sparkles,
-  Filter
+  Filter,
+  Bell
 } from "lucide-react"
 import { AuthButtons } from "@/components/auth-buttons"
 import { useAuth } from "@/contexts/auth-context"
@@ -44,7 +45,7 @@ import { useOverlay } from "@/contexts/overlay-context"
 import { useGeolocation } from "@/lib/hooks/useGeolocation"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
-import { supabase } from "@/lib/supabaseClient"
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient"
 import OptimizedLink from "@/components/ui/link"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 
@@ -283,8 +284,13 @@ export function Navbar() {
       
       setIsLoadingActivities(true);
       try {
-        // Fetch real data from Supabase
-        const { data, error } = await supabase
+        // Fetch real data from Supabase using the browser client
+        const supabaseClient = getSupabaseBrowserClient();
+        if (!supabaseClient) {
+          throw new Error('Supabase client not initialized');
+        }
+        
+        const { data, error } = await supabaseClient
           .from('ecotrack')
           .select('*');
           
@@ -502,7 +508,6 @@ export function Navbar() {
               </div>
             </Link>
           
-            {/* Remove Main Navigation - Desktop */}
             {/* Right side controls */}
             <div className="flex items-center gap-3 ml-auto">
               {/* Desktop Search Input - Now first */}
@@ -1068,6 +1073,76 @@ export function Navbar() {
         </AnimatePresence>
       </header>
       
+      {/* Modern Side Navigation Bar */}
+      <div className="fixed right-6 top-1/2 -translate-y-1/2 z-[60] hidden md:block">
+        <div className="flex flex-col gap-5 p-5 rounded-[20px] bg-black/20 backdrop-blur-xl border border-white/5 shadow-[0_8px_32px_rgba(0,0,0,0.4)] overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-cyan-950/30 via-purple-950/20 to-black/30 z-0"></div>
+          <div className="absolute -left-40 -top-40 w-60 h-60 bg-cyan-500/5 rounded-full filter blur-[80px]"></div>
+          <div className="absolute -right-40 -bottom-40 w-60 h-60 bg-purple-500/5 rounded-full filter blur-[80px]"></div>
+          
+          {/* Top navigation group */}
+          <div className="flex flex-col gap-6 items-center relative z-10">
+            <NavButton
+              href="/"
+              icon={<div className="p-3 rounded-xl bg-gradient-to-br from-indigo-950/60 to-indigo-900/30 border border-indigo-500/20 shadow-lg shadow-indigo-950/20 group-hover:shadow-indigo-900/30 group-hover:border-indigo-500/40 transition-all">
+                <Layers className="h-5 w-5 text-indigo-400 group-hover:text-indigo-300 transition-colors" />
+              </div>}
+              label="Home"
+              isActive={pathname === "/"}
+              vertical={true}
+            />
+            
+            <NavButton
+              href="/map"
+              icon={<div className="p-3 rounded-xl bg-gradient-to-br from-cyan-950/60 to-cyan-900/30 border border-cyan-500/20 shadow-lg shadow-cyan-950/20 group-hover:shadow-cyan-900/30 group-hover:border-cyan-500/40 transition-all">
+                <MapPin className="h-5 w-5 text-cyan-400 group-hover:text-cyan-300 transition-colors" />
+              </div>}
+              label="Map"
+              isActive={pathname === "/map"}
+              vertical={true}
+            />
+            
+            {/* Center 'Submit' button - highlighted */}
+            <NavButton
+              onClick={() => showOverlay('submit')}
+              icon={<div className="p-3.5 rounded-xl bg-gradient-to-br from-purple-600/20 to-cyan-600/10 border border-purple-500/30 shadow-lg shadow-purple-900/20 group-hover:shadow-purple-800/30 group-hover:border-purple-500/50 transition-all">
+                <PlusSquare className="h-5.5 w-5.5 text-purple-400 group-hover:text-purple-300 transition-colors" />
+              </div>}
+              label="Submit"
+              isActive={false}
+              vertical={true}
+              highlight={true}
+            />
+            
+            <NavButton
+              href="/monitor"
+              icon={<div className="p-3 rounded-xl bg-gradient-to-br from-emerald-950/60 to-emerald-900/30 border border-emerald-500/20 shadow-lg shadow-emerald-950/20 group-hover:shadow-emerald-900/30 group-hover:border-emerald-500/40 transition-all">
+                <BarChart2 className="h-5 w-5 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
+              </div>}
+              label="Monitor"
+              isActive={pathname === "/monitor"}
+              vertical={true}
+            />
+          </div>
+
+          {/* MacOS style separator */}
+          <div className="h-px w-8 mx-auto bg-gradient-to-r from-transparent via-gray-500/20 to-transparent"></div>
+          
+          {/* Profile button */}
+          <div className="flex flex-col items-center relative z-10">
+            <NavButton
+              href="/profile"
+              icon={<div className="p-3 rounded-xl bg-gradient-to-br from-gray-800/60 to-gray-900/30 border border-gray-500/20 shadow-lg shadow-black/20 group-hover:shadow-gray-800/30 group-hover:border-gray-500/40 transition-all">
+                <User className="h-5 w-5 text-gray-400 group-hover:text-gray-300 transition-colors" />
+              </div>}
+              label="Profile"
+              isActive={pathname === "/profile"}
+              vertical={true}
+            />
+          </div>
+        </div>
+      </div>
+      
       {/* Mobile menu */}
       <AnimatePresence>
         {isMobileMenuOpen && (
@@ -1162,27 +1237,49 @@ function NavButton({
   icon, 
   label, 
   isActive,
-  onClick
+  onClick,
+  vertical = false,
+  highlight = false
 }: { 
   href?: string; 
   icon: React.ReactNode; 
   label: string; 
   isActive: boolean;
   onClick?: () => void;
+  vertical?: boolean;
+  highlight?: boolean;
 }) {
   if (href) {
     return (
       <OptimizedLink
         href={href}
         className={cn(
-          "flex items-center gap-1.5 text-sm py-2 px-3 rounded-md transition-colors",
+          "group flex items-center transition-all duration-300 relative",
+          vertical 
+            ? "flex-col gap-2 py-2 px-2" 
+            : "gap-1.5 text-sm py-2 px-3 rounded-md",
           isActive 
-            ? "bg-gradient-to-r from-cyan-900/60 to-purple-900/60 text-white" 
+            ? vertical
+              ? "text-white" 
+              : "bg-gradient-to-r from-cyan-900/60 to-purple-900/60 text-white" 
             : "text-gray-400 hover:text-cyan-400"
         )}
       >
         {icon}
-        <span>{label}</span>
+        <span className={cn(
+          "transition-all duration-300",
+          vertical && "text-xs tracking-wide",
+          vertical && isActive && "font-medium bg-clip-text text-transparent bg-gradient-to-b from-cyan-300 to-cyan-400",
+          vertical && highlight && "font-medium bg-clip-text text-transparent bg-gradient-to-r from-purple-300 to-cyan-400"
+        )}>
+          {label}
+        </span>
+        {vertical && isActive && (
+          <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-6 h-1 rounded-full bg-gradient-to-r from-cyan-500 to-purple-600"></div>
+        )}
+        {vertical && highlight && !isActive && (
+          <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-4 h-1 rounded-full bg-gradient-to-r from-purple-500 to-cyan-600 opacity-60"></div>
+        )}
       </OptimizedLink>
     );
   }
@@ -1191,14 +1288,32 @@ function NavButton({
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-1.5 text-sm py-2 px-3 rounded-md transition-colors",
+        "group flex items-center transition-all duration-300 relative",
+        vertical 
+          ? "flex-col gap-2 py-2 px-2" 
+          : "gap-1.5 text-sm py-2 px-3 rounded-md",
         isActive 
-          ? "bg-gradient-to-r from-cyan-900/60 to-purple-900/60 text-white" 
+          ? vertical
+            ? "text-white" 
+            : "bg-gradient-to-r from-cyan-900/60 to-purple-900/60 text-white" 
           : "text-gray-400 hover:text-cyan-400"
       )}
     >
       {icon}
-      <span>{label}</span>
+      <span className={cn(
+        "transition-all duration-300",
+        vertical && "text-xs tracking-wide",
+        vertical && isActive && "font-medium bg-clip-text text-transparent bg-gradient-to-b from-cyan-300 to-cyan-400",
+        vertical && highlight && "font-medium bg-clip-text text-transparent bg-gradient-to-r from-purple-300 to-cyan-400"
+      )}>
+        {label}
+      </span>
+      {vertical && isActive && (
+        <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-6 h-1 rounded-full bg-gradient-to-r from-cyan-500 to-purple-600"></div>
+      )}
+      {vertical && highlight && !isActive && (
+        <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-4 h-1 rounded-full bg-gradient-to-r from-purple-500 to-cyan-600 opacity-60"></div>
+      )}
     </button>
   );
 }
@@ -1209,13 +1324,17 @@ function MobileNavButton({
   icon, 
   label, 
   isActive, 
-  onClick 
+  onClick,
+  vertical = false,
+  highlight = false
 }: { 
   href?: string; 
   icon: React.ReactNode; 
   label: string; 
   isActive: boolean; 
   onClick?: () => void;
+  vertical?: boolean;
+  highlight?: boolean;
 }) {
   if (href) {
     return (
@@ -1254,6 +1373,20 @@ function MobileNavButton({
 function UserMenu({ user }: { user: any }) {
   const router = useRouter();
   const { signOut } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    // Close dropdown when clicking outside
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   
   const handleSignOut = async () => {
     await signOut();
@@ -1261,52 +1394,69 @@ function UserMenu({ user }: { user: any }) {
   };
   
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-9 w-9 rounded-full p-0 overflow-hidden border border-cyan-500/50 hover:bg-cyan-900/20">
-          <Avatar className="h-8 w-8">
-            <AvatarImage 
-              src={user.user_metadata?.avatar_url || ""} 
-              alt={user.user_metadata?.full_name || "User"} 
-            />
-            <AvatarFallback className="bg-gradient-to-r from-cyan-500 to-purple-600 text-white text-xs">
-              {getInitials(user.user_metadata?.full_name || user.email || "User")}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 bg-gray-900/95 backdrop-blur-lg border-cyan-900/50 text-white">
-        <div className="py-2 px-4 border-b border-gray-800">
-          <p className="text-sm font-medium">{user.user_metadata?.full_name || "EcoTrack User"}</p>
-          <p className="text-xs text-gray-400 truncate">{user.email}</p>
-        </div>
-        <DropdownMenuItem asChild>
-          <OptimizedLink 
-            href="/profile" 
-            className="cursor-pointer focus:bg-cyan-900/30 focus:text-cyan-400"
+    <div className="relative" ref={menuRef}>
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="h-9 w-9 rounded-full p-0 overflow-hidden border border-cyan-500/50 hover:bg-cyan-900/20 flex items-center justify-center"
+      >
+        <Avatar className="h-8 w-8">
+          <AvatarImage 
+            src={user.user_metadata?.avatar_url || ""} 
+            alt={user.user_metadata?.full_name || "User"} 
+          />
+          <AvatarFallback className="bg-gradient-to-r from-cyan-500 to-purple-600 text-white text-xs">
+            {getInitials(user.user_metadata?.full_name || user.email || "User")}
+          </AvatarFallback>
+        </Avatar>
+      </button>
+      
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-gray-900/95 backdrop-blur-lg border border-cyan-900/50 text-white z-50">
+          <div className="py-2 px-4 border-b border-gray-800">
+            <p className="text-sm font-medium">{user.user_metadata?.full_name || "EcoTrack User"}</p>
+            <p className="text-xs text-gray-400 truncate">{user.email}</p>
+          </div>
+          
+          <a 
+            href="/profile"
+            onClick={(e) => {
+              e.preventDefault();
+              router.push('/profile');
+              setIsOpen(false);
+            }}
+            className="flex items-center px-4 py-2 text-sm hover:bg-cyan-900/30 hover:text-cyan-400 cursor-pointer"
           >
             <User className="mr-2 h-4 w-4" />
             <span>Profile</span>
-          </OptimizedLink>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <OptimizedLink 
-            href="/monitor" 
-            className="cursor-pointer focus:bg-cyan-900/30 focus:text-cyan-400"
+          </a>
+          
+          <a 
+            href="/monitor"
+            onClick={(e) => {
+              e.preventDefault();
+              router.push('/monitor');
+              setIsOpen(false);
+            }}
+            className="flex items-center px-4 py-2 text-sm hover:bg-cyan-900/30 hover:text-cyan-400 cursor-pointer"
           >
             <LayoutDashboard className="mr-2 h-4 w-4" />
             <span>Dashboard</span>
-          </OptimizedLink>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-gray-800" />
-        <DropdownMenuItem 
-          onClick={handleSignOut}
-          className="cursor-pointer text-red-400 focus:bg-red-900/30 focus:text-red-400"
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Log out</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </a>
+          
+          <div className="h-px bg-gray-800 my-1" />
+          
+          <button 
+            onClick={() => {
+              handleSignOut();
+              setIsOpen(false);
+            }}
+            className="flex w-full items-center px-4 py-2 text-sm text-red-400 hover:bg-red-900/30 hover:text-red-400 cursor-pointer"
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            <span>Log out</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 } 
