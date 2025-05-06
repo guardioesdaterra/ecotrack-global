@@ -1785,25 +1785,55 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
           }).addTo(mapInstance);
           
           // Add a third layer just for water and natural features with higher opacity
-          // Add authentication to Stadia Maps URL
-          let naturesLayerUrl = "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg";
-          // Add API key if available
-          if (stadiaApiKey) {
-            naturesLayerUrl += `?api_key=${stadiaApiKey}`;
-            console.log("Using Stadia Maps with API key authentication");
-          } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            console.log("Using Stadia Maps with localhost authentication (limited rate)");
-          } else {
-            console.warn("No Stadia Maps API key provided. Using domain-based authentication if configured.");
+          // Update the first instance of the map layer configuration with Cooper Hewitt Watercolor Maps
+          // Add a third layer just for water and natural features with higher opacity
+          let baseTileLayerUrl = "https://watercolormaps.collection.cooperhewitt.org/tile/{z}/{x}/{y}.jpg";
+          
+          // Cooper Hewitt watercolor maps don't need API key authentication
+          console.log("Using Cooper Hewitt Watercolor Maps");
+          
+          const baseLayerAttribution = 'Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under CC BY SA.';
+          
+          // Add a try-catch for error handling
+          try {
+            L.tileLayer(baseTileLayerUrl, {
+              attribution: baseLayerAttribution,
+              opacity: 0.8,
+              pane: 'overlayPane',
+            }).addTo(mapInstance);
+            console.log("Successfully added Watercolor layer");
+          } catch (error) {
+            console.error("Error adding Watercolor layer:", error);
+            // Fallback to OpenStreetMap if Cooper Hewitt fails
+            console.log("Falling back to OpenStreetMap");
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+              opacity: 0.7,
+              pane: 'overlayPane',
+            }).addTo(mapInstance);
           }
           
-          const naturesAttribution = '&copy; <a href="https://stamen.com">Stamen Design</a>, &copy; <a href="https://stadiamaps.com/">Stadia Maps</a>';
+          // Update the second instance of the map layer configuration
+          // Add a third layer just for water and natural features with higher opacity
+          let watercolorLayerUrl = "https://watercolormaps.collection.cooperhewitt.org/tile/{z}/{x}/{y}.jpg";
+          const watercolorAttribution = 'Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under CC BY SA.';
           
-          L.tileLayer(naturesLayerUrl, {
-            attribution: naturesAttribution,
-            opacity: 0.7, // Increased from 0.5 to make natural features more vibrant
-            pane: 'overlayPane',
-          }).addTo(mapInstance);
+          // Try to add the Cooper Hewitt Watercolor layer with error handling
+          try {
+            L.tileLayer(watercolorLayerUrl, {
+              attribution: watercolorAttribution,
+              opacity: 0.8,
+              pane: 'overlayPane',
+            }).addTo(mapInstance);
+          } catch (error) {
+            console.error("Error adding Cooper Hewitt Watercolor layer:", error);
+            // Fallback to OpenStreetMap
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+              opacity: 0.7,
+              pane: 'overlayPane',
+            }).addTo(mapInstance);
+          }
           
           // Signal that layers are ready
           setLayersReady(true);
@@ -1864,14 +1894,29 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
         }).addTo(mapInstance);
         
         // Add a third layer just for water and natural features with higher opacity
-        const naturesLayerUrl = "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg";
-        const naturesAttribution = '&copy; <a href="https://stamen.com">Stamen Design</a>';
+        let secondLayerUrl = "https://watercolormaps.collection.cooperhewitt.org/tile/{z}/{x}/{y}.jpg";
+        // Add API key if available
+        if (stadiaApiKey) {
+          secondLayerUrl += `?api_key=${stadiaApiKey}`;
+        }
+        const secondLayerAttribution = 'Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under CC BY SA.';
         
-        L.tileLayer(naturesLayerUrl, {
-          attribution: naturesAttribution,
-          opacity: 0.7, // Increased from 0.5 to make natural features more vibrant
-          pane: 'overlayPane',
-        }).addTo(mapInstance);
+        // Try to add the Cooper Hewitt Watercolor layer with error handling
+        try {
+          L.tileLayer(secondLayerUrl, {
+            attribution: secondLayerAttribution,
+            opacity: 0.8,
+            pane: 'overlayPane',
+          }).addTo(mapInstance);
+        } catch (error) {
+          console.error("Error adding Cooper Hewitt Watercolor layer:", error);
+          // Fallback to OpenStreetMap
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            opacity: 0.7,
+            pane: 'overlayPane',
+          }).addTo(mapInstance);
+        }
         
         // Signal that layers are ready
         setLayersReady(true);

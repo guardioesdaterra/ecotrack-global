@@ -8,9 +8,9 @@ export default function GlobePage() {
   
   // Get the API key from environment or create one
   useEffect(() => {
-    // For development, you can use environment variables
-    // In production, you'd use domain-based authentication
-    setApiKey(process.env.NEXT_PUBLIC_STADIA_MAPS_API_KEY || 'your-stadia-maps-api-key')
+    // We're using Cooper Hewitt's watercolor maps which don't require an API key
+    // Explicitly set to null to choose watercolor maps instead of Stadia Maps
+    setApiKey(null)
   }, [])
   
   return (
