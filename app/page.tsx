@@ -498,14 +498,15 @@ export default function Home() {
               {/* Mobile Globe - ensure z-index for interactivity */}
               {isMobile && (
                 <motion.div 
-                  className="fixed inset-0 flex items-center justify-center z-[20]"
+                  className="fixed top-0 bottom-0 flex items-center z-[10]"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.7, delay: 0.8 }}
+                  style={{ zIndex: 999, left: "40%", right: 0 }}
                 >
                   {globeLoaded && (
-                    <div className="absolute inset-0 flex items-center justify-center overflow-visible">
-                      <div className="w-[250px] h-[250px]">
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-[112%] h-[112%]">
                         <GlobeDemo />
                       </div>
                     </div>

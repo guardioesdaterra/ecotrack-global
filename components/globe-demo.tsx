@@ -25,8 +25,8 @@ export function GlobeDemo() {
   // Optimize settings based on device capabilities
   const getOptimizedConfig = () => {
     const baseConfig = {
-      width: isMobile ? 300 : 1000,
-      height: isMobile ? 300 : 1000,
+      width: isMobile ? 400 : 1000,
+      height: isMobile ? 400 : 1000,
       devicePixelRatio: lowPerformance ? 1 : 2,
       phi: 0,
       theta: 0.2,
@@ -74,13 +74,8 @@ export function GlobeDemo() {
 
   return (
     <div 
-      className={`relative flex items-center justify-center ${isMobile ? 'scale-75' : ''}`}
+      className="relative w-full h-full flex items-center justify-center"
       ref={globeRef}
-      style={{ 
-        width: '100%', 
-        height: '100%',
-        transform: isMobile ? 'scale(0.8)' : 'none'
-      }}
     >
       <div className="w-full h-full" style={{ filter: 'invert(100%)' }}>
         <Globe className="w-full h-full" config={getOptimizedConfig()} />
