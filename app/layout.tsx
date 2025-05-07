@@ -10,13 +10,15 @@ import { GlobalEffects } from '@/components/global-effects'
 import { PerformanceProvider } from '@/hooks/use-performance-mode'
 import { AppShell } from '@/components/ui/app-shell'
 import Script from 'next/script'
-import "./globals.css"
-import "./fix-leaflet.css"
+import "@/styles/globals.css"
+import "leaflet/dist/leaflet.css"
+import "@/app/fix-leaflet.css"
 import "./invert-map.css"
 
 const inter = Inter({ 
   subsets: ["latin"],
   display: 'swap', // Melhora a performance ao exibir fonte
+  variable: '--font-inter',
   preload: true 
 })
 
@@ -24,7 +26,25 @@ export const metadata: Metadata = {
   title: "EcoTrack Global",
   description: "Track environmental initiatives worldwide",
   manifest: "/manifest.json",
-  generator: 'Earth Guardians'
+  generator: 'Earth Guardians',
+  keywords: 'ecotrack, sustentabilidade, meio ambiente, visualização, mapa, atividades ambientais',
+  authors: [{ name: 'EcoTrack Team' }],
+  metadataBase: new URL('https://ecotrack.global'),
+  openGraph: {
+    title: 'EcoTrack Global',
+    description: 'Rastreamento e Visualização de Atividades Ambientais Globais',
+    url: 'https://ecotrack.global',
+    siteName: 'EcoTrack Global',
+    images: [
+      {
+        url: '/og-image.jpg',
+        width: 1200,
+        height: 630,
+      },
+    ],
+    locale: 'pt_BR',
+    type: 'website',
+  },
 }
 
 export const viewport: Viewport = {
@@ -58,6 +78,40 @@ export default function RootLayout({ children }: {
           strategy="beforeInteractive"
           crossOrigin=""
         />
+        
+        {/* Script para corrigir o problema de altura viewport em mobile */}
+        <Script id="viewport-fix" strategy="afterInteractive">
+          {`
+            // Fix para altura de viewport em dispositivos móveis
+            function setMobileViewportHeight() {
+              // First we get the viewport height and we multiple it by 1% to get a value for a vh unit
+              let vh = window.innerHeight * 0.01;
+              // Then we set the value in the --vh custom property to the root of the document
+              document.documentElement.style.setProperty('--vh', \`\${vh}px\`);
+              
+              // Também força o mapa a preencher a altura correta
+              const mapElements = document.querySelectorAll('.leaflet-container');
+              mapElements.forEach(el => {
+                if (el instanceof HTMLElement) {
+                  el.style.height = \`\${window.innerHeight}px\`;
+                }
+              });
+            }
+
+            // Executa quando a página carrega
+            setMobileViewportHeight();
+
+            // Executa quando o tamanho da janela muda
+            window.addEventListener('resize', () => {
+              setMobileViewportHeight();
+            });
+
+            // Adiciona listener para orientationchange para dispositivos móveis
+            window.addEventListener('orientationchange', () => {
+              setTimeout(setMobileViewportHeight, 100);
+            });
+          `}
+        </Script>
       </head>
       <body className={`${inter.className} antialiased bg-black text-white overflow-x-hidden`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>

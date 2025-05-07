@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react"
-import { useMap } from "react-leaflet"
 import { Activity, getActivityColor } from "@/components/map-component"
 
 declare const L: any
@@ -61,8 +60,7 @@ export const computeConnectionLines = (activities: Activity[]): Connection[] => 
   return connections;
 };
 
-export const ConnectionLines: React.FC<{ activities: Activity[] }> = ({ activities }) => {
-  const map = useMap()
+export const ConnectionLines: React.FC<{ activities: Activity[], map: L.Map }> = ({ activities, map }) => {
   const [connections, setConnections] = useState<Connection[]>([])
 
   useEffect(() => {
@@ -71,26 +69,38 @@ export const ConnectionLines: React.FC<{ activities: Activity[] }> = ({ activiti
       const newConnections: Connection[] = [];
       let connectionId = 1;
       
-      // For each activity, create 3 random connections to other activities
+      // For each activity, create 1-3 random connections to other activities
       activities.forEach(activity => {
         // Get array of possible target activity IDs (excluding the current activity)
         const possibleTargets = activities
           .filter(a => a.id !== activity.id)
           .map(a => a.id);
         
-        // Shuffle and take first 3 (or fewer if there aren't enough activities)
-        const targets = shuffleArray(possibleTargets).slice(0, Math.min(3, possibleTargets.length));
+        // Limit connections per activity to prevent overcrowding
+        const maxConnections = Math.min(3, Math.floor(possibleTargets.length / 2));
+        const connectionsCount = Math.max(1, Math.floor(Math.random() * maxConnections));
+        
+        // Shuffle and take specified number
+        const targets = shuffleArray(possibleTargets).slice(0, connectionsCount);
         
         // Create connections
         targets.forEach(targetId => {
-          newConnections.push({
-            id: connectionId.toString(), // Convert to string
-            from_activity_id: activity.id,
-            to_activity_id: targetId,
-            type: activity.type,
-            description: activity.description
-          });
-          connectionId++;
+          // Avoid duplicates (in either direction)
+          const existingConnection = newConnections.find(
+            c => (c.from_activity_id === targetId && c.to_activity_id === activity.id) ||
+                 (c.from_activity_id === activity.id && c.to_activity_id === targetId)
+          );
+          
+          if (!existingConnection) {
+            newConnections.push({
+              id: connectionId.toString(),
+              from_activity_id: activity.id,
+              to_activity_id: targetId,
+              type: activity.type,
+              description: activity.description
+            });
+            connectionId++;
+          }
         });
       });
       
@@ -99,40 +109,81 @@ export const ConnectionLines: React.FC<{ activities: Activity[] }> = ({ activiti
   }, [activities]);
 
   useEffect(() => {
-    if (!L) return
+    if (!L || !map) return;
 
+    // Clear existing lines
     map.eachLayer((layer: any) => {
-      if (layer instanceof L.Polyline) {
-        map.removeLayer(layer)
+      if (layer instanceof L.Polyline && layer._connection) {
+        map.removeLayer(layer);
       }
-    })
+    });
 
-    const lines: any[] = []
+    const lines: any[] = [];
 
     connections.forEach((connection) => {
-      const fromActivity = activities.find(a => a.id === connection.from_activity_id)
-      const toActivity = activities.find(a => a.id === connection.to_activity_id)
+      const fromActivity = activities.find(a => a.id === connection.from_activity_id);
+      const toActivity = activities.find(a => a.id === connection.to_activity_id);
+      
       if (fromActivity && toActivity) {
         const latlngs: any[] = [
           [fromActivity.lat, fromActivity.lng],
           [toActivity.lat, toActivity.lng],
-        ]
+        ];
 
         // Use the activity's type to determine the line color
-        const lineColor = getActivityColor(fromActivity.type)
+        const lineColor = getActivityColor(fromActivity.type);
 
+        // Create a polyline with a dash array for a dotted effect
         const line = L.polyline(latlngs, {
           color: lineColor,
-          weight: 3,
-          opacity: 0,
-        })
+          weight: 2,
+          opacity: 0.5,
+          dashArray: '5, 10',
+          className: 'activity-connection-line',
+        });
+        
+        // Add custom property to identify this as a connection line
+        line._connection = connection.id;
+        
+        // Add the line to the map
+        line.addTo(map);
+        
+        // Store in array for cleanup
+        lines.push(line);
+        
+        // Add animated opacity effect
+        let fadeDirection = 1;
+        let opacity = 0.5;
+        
+        const animateLine = () => {
+          if (!line || !map.hasLayer(line)) return;
+          
+          opacity += 0.01 * fadeDirection;
+          
+          // Reverse direction at thresholds
+          if (opacity >= 0.7) fadeDirection = -1;
+          if (opacity <= 0.3) fadeDirection = 1;
+          
+          // Update opacity
+          line.setStyle({ opacity });
+          
+          // Continue animation
+          setTimeout(animateLine, 50);
+        };
+        
+        // Start the animation
+        animateLine();
       }
-    })
+    });
 
     return () => {
-      lines.forEach(line => map.removeLayer(line))
-    }
-  }, [map, activities, connections])
+      lines.forEach(line => {
+        if (map.hasLayer(line)) {
+          map.removeLayer(line);
+        }
+      });
+    };
+  }, [map, activities, connections]);
 
-  return null
+  return null;
 }

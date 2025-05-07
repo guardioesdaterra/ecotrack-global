@@ -27,18 +27,29 @@ interface MapClientActivity {
   description?: string
 }
 
-// Dynamically import MapClient with no SSR
+// Ensure dynamic import has correct options for client-side only component
 const MapClientNoSSR = dynamic(
   () => import('@/components/MapClient'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-full bg-black">
-        <LoadingScreen />
-      </div>
-    )
+  { 
+    ssr: false, 
+    loading: () => <MapLoading /> 
   }
 )
+
+// Simple loading component
+function MapLoading() {
+  return (
+    <div className="w-full h-screen bg-gradient-to-b from-black via-black/90 to-black/80 flex flex-col items-center justify-center">
+      <div className="relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-full blur-2xl"></div>
+        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-cyan-500 to-purple-600 animate-pulse flex items-center justify-center relative">
+          <div className="h-8 w-8 text-white animate-spin border-2 border-white border-t-transparent rounded-full"></div>
+        </div>
+      </div>
+      <p className="mt-4 text-white/80">Loading map...</p>
+    </div>
+  )
+}
 
 // Animated loading screen component
 function LoadingScreen() {
@@ -549,7 +560,7 @@ function MapPageContent() {
       
       {/* Map container */}
       <div className="w-full h-full absolute inset-0 overflow-hidden">
-        <MapClient 
+        <MapClientNoSSR 
           activities={mappedActivities}
           stadiaApiKey={apiKey}
           initialSelectedActivity={selectedActivity}
@@ -587,7 +598,7 @@ function MapPageContent() {
 // Use Suspense boundary for the component that uses useSearchParams
 export default function MapPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<MapLoading />}>
       <MapPageContent />
     </Suspense>
   )

@@ -1,5 +1,54 @@
 /* Direct, clear map inversion styles */
 
+/* Apply these styles to ensure markers are always on top */
+html {
+  --marker-z-index: 99999;
+  --particle-z-index: 99998;
+}
+
+/* Overlay para partículas do mapa */
+.particle-container,
+.particle-overlay,
+.map-particle {
+  z-index: var(--particle-z-index) !important;
+  position: absolute !important;
+  pointer-events: none !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  filter: none !important;
+  overflow: visible !important;
+}
+
+/* Forçar estilização correta para partículas */
+.dark-map .particle-container,
+.dark-map .particle-overlay,
+.dark-map .map-particle {
+  filter: none !important;
+}
+
+/* Garante que os glow effects sejam visíveis */
+.map-particle {
+  overflow: visible !important;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+/* Global reset of marker elements z-index */
+.leaflet-marker-pane,
+.leaflet-marker-icon,
+div[class*='activity-marker'],
+.activity-marker-container,
+.activity-marker,
+.super-high-z-marker,
+.leaflet-marker-icon.leaflet-interactive,
+.leaflet-marker-icon.leaflet-div-icon {
+  z-index: var(--marker-z-index) !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: absolute !important;
+}
+
 /* Invert map tiles with adjusted contrast and brightness */
 .leaflet-tile-pane {
   filter: invert(100%) hue-rotate(180deg) contrast(110%) brightness(95%) !important;
@@ -49,4 +98,51 @@
 .dark-map .custom-map-marker,
 .dark-map .custom-map-marker-inner {
   filter: none !important;
+}
+
+/* Fix for specifically our activity markers */
+[class^="activity-marker"],
+[class*=" activity-marker"],
+.activity-marker-container,
+.activity-marker {
+  display: block !important;
+  position: absolute !important;
+  z-index: calc(var(--marker-z-index) + 100) !important;
+  transform-origin: center center !important;
+}
+
+/* Estilos específicos para mobile */
+@media screen and (max-width: 768px) {
+  /* Melhorar contraste do mapa em mobile */
+  .leaflet-tile-pane {
+    filter: invert(100%) hue-rotate(180deg) contrast(120%) brightness(90%) !important;
+    opacity: 0.6 !important; /* Ligeiramente mais opaco em mobile para melhor visualização */
+  }
+  
+  /* Garantir que os marcadores apareçam claramente em telas menores */
+  .leaflet-marker-pane,
+  .leaflet-marker-icon,
+  .leaflet-marker-shadow,
+  .activity-marker-container,
+  .activity-marker,
+  .super-high-z-marker {
+    z-index: 99999 !important;
+    position: absolute !important;
+    transform-origin: center !important;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.7) !important;
+  }
+  
+  /* Aumentar a altura dos controles de zoom para melhor usabilidade em telas de toque */
+  .leaflet-control-zoom a {
+    width: 40px !important;
+    height: 40px !important;
+    line-height: 40px !important;
+  }
+}
+
+/* Garantir que o mapa e seus elementos sejam exibidos corretamente */
+html, body, #__next, main {
+  height: 100% !important;
+  width: 100% !important;
+  overflow: hidden !important;
 } 

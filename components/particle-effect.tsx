@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { useMap } from "react-leaflet"
-import { Activity, getActivityColor } from "@/components/map-component"
+import React, { useEffect, useRef, useState, useMemo } from "react"
+import { Activity as BaseActivity, getActivityColor } from "@/components/map-component"
 import anime from "animejs/lib/anime.es.js"
 
 // Handle Leaflet properly for SSR
@@ -12,10 +11,17 @@ if (typeof window !== 'undefined') {
   L = require('leaflet');
 }
 
+// Extend the Activity type to include originalLat/originalLng properties
+interface Activity extends BaseActivity {
+  originalLat?: number;
+  originalLng?: number;
+}
+
 interface Connection {
   source: Activity
   target: Activity
   id: string
+  curveDirection: number
 }
 
 interface Particle {
@@ -104,7 +110,7 @@ const initCanvasLayer = () => {
       this._map = map;
       this._canvas = L.DomUtil.create('canvas', 'leaflet-layer leaflet-particle-layer');
       this._canvas.style.pointerEvents = 'none';
-      this._canvas.style.zIndex = '500';
+      this._canvas.style.zIndex = '99999';
       this._canvas.style.position = 'absolute';
       this._canvas.style.width = '100%';
       this._canvas.style.height = '100%';
@@ -127,7 +133,7 @@ const initCanvasLayer = () => {
           const container = map.getContainer();
           if (container) {
             // Add to container with lower z-index
-            this._canvas.style.zIndex = "400";
+            this._canvas.style.zIndex = "9999999";
             container.appendChild(this._canvas);
           }
         } catch (e) {
@@ -272,8 +278,7 @@ const initCanvasLayer = () => {
   return ParticleCanvasLayer;
 };
 
-export function ParticleEffect({ activities }: { activities: Activity[] }) {
-  const map = useMap();
+export function ParticleEffect({ activities, map }: { activities: Activity[], map: L.Map }) {
   const particlesRef = useRef<Particle[]>([]);
   const connectionsRef = useRef<Connection[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -327,7 +332,24 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
             transform: translate(-50%, -50%);
             box-shadow: 0 0 10px currentColor, 0 0 5px currentColor;
           }
+          
+          /* Add a subtle glow trail effect for particles */
+          .map-particle::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            filter: blur(4px);
+            background: inherit;
+            z-index: -1;
+            opacity: 0.6;
+          }
         `;
+        style.className = 'particle-style';
         if (document.head) {
           document.head.appendChild(style);
         }
@@ -395,16 +417,20 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
       if (possibleTargets.length > 0) {
         // Get random targets
         const remainingSlots = 4 - (connectionsPerActivity.get(source.id) || 0);
-        const targetsToConnectCount = Math.min(remainingSlots, possibleTargets.length);
+        const targetsToConnectCount = Math.min(remainingSlots, Math.min(3, possibleTargets.length));
         const shuffledTargets = shuffleArray([...possibleTargets]);
         const selectedTargets = shuffledTargets.slice(0, targetsToConnectCount);
         
         // Create connections
         selectedTargets.forEach(target => {
+          // Randomly assign positive or negative curve direction for variety
+          const curveDirection = Math.random() > 0.5 ? 1 : -1;
+          
           connections.push({
             source: source,
             target: target,
-            id: `${source.id}-${target.id}`
+            id: `${source.id}-${target.id}`,
+            curveDirection
           });
           
           connectionsPerActivity.set(source.id, (connectionsPerActivity.get(source.id) || 0) + 1);
@@ -424,8 +450,8 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
     const particles: Particle[] = [];
     
     connections.forEach(connection => {
-      // Create 3 particles per connection
-      const particleCount = 3;
+      // Create 3-5 particles per connection
+      const particleCount = Math.floor(Math.random() * 3) + 3;
       
       for (let i = 0; i < particleCount; i++) {
         const progress = Math.random();
@@ -449,7 +475,7 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
             x: 0,
             y: 0,
             size,
-            speed: Math.random() * 0.6 + 0.3,
+            speed: Math.random() * 0.8 + 0.4, // Speed between 0.4-1.2
             connection,
             progress,
             color,
@@ -500,13 +526,13 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
           
           // Calculate source and target positions on map
           const sourcePoint = map.latLngToContainerPoint([
-            particle.connection.source.lat,
-            particle.connection.source.lng
+            particle.connection.source.originalLat || particle.connection.source.lat,
+            particle.connection.source.originalLng || particle.connection.source.lng
           ]);
           
           const targetPoint = map.latLngToContainerPoint([
-            particle.connection.target.lat,
-            particle.connection.target.lng
+            particle.connection.target.originalLat || particle.connection.target.lat,
+            particle.connection.target.originalLng || particle.connection.target.lng
           ]);
           
           // Update progress
@@ -515,13 +541,55 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
             particle.progress = 0;
           }
           
-          // Calculate current position
-          particle.x = sourcePoint.x + (targetPoint.x - sourcePoint.x) * particle.progress;
-          particle.y = sourcePoint.y + (targetPoint.y - sourcePoint.y) * particle.progress;
+          // Calculate current position with bezier curve for more natural flow
+          // Use a slight arc for more visual interest
+          const t = particle.progress;
+          const mt = 1 - t;
+          
+          // Add a slight curve to the path for more organic movement
+          // Calculate control point slightly above the midpoint
+          const midX = (sourcePoint.x + targetPoint.x) / 2;
+          const midY = (sourcePoint.y + targetPoint.y) / 2;
+          const distance = Math.sqrt(
+            Math.pow(targetPoint.x - sourcePoint.x, 2) + 
+            Math.pow(targetPoint.y - sourcePoint.y, 2)
+          );
+          
+          // Height of the curve proportional to distance
+          const curveHeight = distance * 0.15;
+          
+          // Calculate normal vector for the control point
+          const dx = targetPoint.x - sourcePoint.x;
+          const dy = targetPoint.y - sourcePoint.y;
+          const nx = -dy / distance; // Normalized perpendicular vector
+          const ny = dx / distance;
+          
+          // Use the connection's curve direction if available, otherwise use 1
+          const curveDirection = particle.connection.curveDirection || 1;
+          
+          // Calculate control point
+          const cpX = midX + nx * curveHeight * curveDirection;
+          const cpY = midY + ny * curveHeight * curveDirection;
+          
+          // Quadratic bezier formula
+          particle.x = mt * mt * sourcePoint.x + 2 * mt * t * cpX + t * t * targetPoint.x;
+          particle.y = mt * mt * sourcePoint.y + 2 * mt * t * cpY + t * t * targetPoint.y;
           
           // Update element position
           if (particle.el) {
             particle.el.style.transform = `translate(${particle.x}px, ${particle.y}px)`;
+            
+            // Slightly change opacity based on progress for a pulsing effect
+            const opacityVariation = Math.sin(particle.progress * Math.PI) * 0.3 + 0.7;
+            particle.el.style.opacity = String(opacityVariation);
+            
+            // Change size slightly for added visual interest
+            const sizeMultiplier = 0.85 + Math.sin(particle.progress * Math.PI * 2) * 0.15;
+            particle.el.style.width = `${particle.size * sizeMultiplier}px`;
+            particle.el.style.height = `${particle.size * sizeMultiplier}px`;
+            
+            // Add a subtle glow intensity variation
+            particle.el.style.boxShadow = `0 0 ${5 + Math.sin(particle.progress * Math.PI) * 5}px ${particle.color}, 0 0 ${3 + Math.sin(particle.progress * Math.PI * 2) * 3}px ${particle.color}`;
           }
         } catch (err) {
           // Silent fail for individual particles
@@ -536,13 +604,13 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
     frameRef.current = requestAnimationFrame(updateParticlePositions);
 
     // Set up map event handlers
-    const handleMapMove = () => {
+    const handleMapMove = throttle(() => {
       // Force an immediate update for responsive movement
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);
       }
       updateParticlePositions(performance.now());
-    };
+    }, 100); // Limit frequency of updates during continuous events
 
     map.on('move', handleMapMove);
     map.on('zoom', handleMapMove);
@@ -564,11 +632,11 @@ export function ParticleEffect({ activities }: { activities: Activity[] }) {
   return null;
 }
 
-export function ConnectionLines({ activities }: { activities: Activity[] }) {
-  const map = useMap();
+export function ConnectionLines({ activities, map }: { activities: Activity[], map: L.Map }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize the canvas for drawing connections

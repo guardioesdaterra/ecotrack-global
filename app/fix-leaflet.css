@@ -19,24 +19,24 @@
 
 /* Garantir que o popup inteiro tenha z-index elevado */
 .leaflet-popup {
-  z-index: 1000 !important;
+  z-index: 10000 !important; /* Aumentado de 1000 para 10000 */
 }
 
 /* Garantir que o contêiner do popup tenha z-index elevado */
 .leaflet-popup-pane {
-  z-index: 700 !important; /* Valor padrão mais alto que o padrão do Leaflet */
+  z-index: 9800 !important; /* Aumentado de 700 para 9800 para ficar acima de tudo menos marcadores */
 }
 
 /* Estilo base para textos dentro dos popups */
 .leaflet-popup-content {
   color: white !important;
-  z-index: 1001 !important; /* Acima do wrapper */
+  z-index: 10001 !important; /* Acima do wrapper */
 }
 
 /* Garantir visibilidade do botão de fechar */
 .leaflet-popup-close-button {
   opacity: 1 !important;
-  z-index: 1002 !important; /* Acima de todo o resto */
+  z-index: 10002 !important; /* Acima de todo o resto */
 }
 
 /* Correções para o Leaflet no Next.js */
@@ -58,12 +58,12 @@
 
 /* Ajustes para os controles de zoom */
 .leaflet-control-container {
-  z-index: 1000 !important;
+  z-index: 10000 !important; /* Aumentado para 10000 */
   position: relative;
 }
 
 .leaflet-control-zoom {
-  z-index: 999 !important;
+  z-index: 10000 !important; /* Aumentado para 10000 */
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.3) !important;
   border: 1px solid rgba(6, 182, 212, 0.3) !important;
   background-color: rgba(0, 0, 0, 0.7) !important;
@@ -107,17 +107,66 @@
   background-color: #000 !important;
 }
 
-/* Apply invert filter to map tiles */
+/* Definições críticas de z-index para garantir que marcadores fiquem por cima */
+.leaflet-pane {
+  z-index: 400 !important; /* Base z-index para todos os panes */
+}
+
 .leaflet-tile-pane {
-  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%) !important;
+  z-index: 200 !important;
+}
+
+.leaflet-overlay-pane {
+  z-index: 400 !important;
+}
+
+.leaflet-shadow-pane {
+  z-index: 500 !important;
+}
+
+.leaflet-marker-pane {
+  z-index: 9000 !important; /* Alto valor para marcadores */
+  position: relative !important; /* Necessário para que z-index funcione */
+}
+
+.leaflet-tooltip-pane {
+  z-index: 9500 !important;
+}
+
+.leaflet-popup-pane {
+  z-index: 9800 !important;
+}
+
+/* Marcadores precisam ficar por cima de tudo */
+.leaflet-marker-icon {
+  z-index: 9500 !important;
+  position: absolute !important;
+}
+
+.leaflet-marker-shadow {
+  z-index: 8000 !important;
+  position: absolute !important;
+}
+
+/* Marcadores personalizados com z-index super alto */
+.super-high-z-marker,
+.activity-marker-container,
+.activity-marker {
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+}
+
+/* Apply invert filter to map tiles */
+.dark-map .leaflet-tile-pane {
+  /* filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%) !important; */
 }
 
 /* Make sure markers and controls are not inverted */
-.leaflet-marker-pane,
-.leaflet-tooltip-pane,
-.leaflet-popup-pane,
-.leaflet-overlay-pane,
-.leaflet-control-container {
+.dark-map .leaflet-marker-pane,
+.dark-map .leaflet-tooltip-pane,
+.dark-map .leaflet-popup-pane,
+.dark-map .leaflet-overlay-pane,
+.dark-map .leaflet-control-container {
   filter: none !important;
 }
 
@@ -154,4 +203,80 @@
 .leaflet-marker-icon:hover .custom-map-marker-inner {
   animation: markerPulse 1.5s infinite;
   transform: scale(1.2);
+}
+
+/* Estilos específicos para marcadores de atividade EcoTrack */
+.activity-marker-container {
+  transform-origin: center center !important;
+  transform: translate(-25px, -25px) !important;
+  pointer-events: auto !important;
+}
+
+.activity-marker {
+  transition: all 0.2s ease !important;
+}
+
+.activity-marker:hover {
+  transform: translate(-50%, -50%) scale(1.2) !important;
+  box-shadow: 0 0 25px var(--color, cyan), 0 0 50px var(--color, cyan) !important;
+}
+
+/* Estilos específicos para dispositivos móveis */
+@media screen and (max-width: 768px) {
+  /* Garantir que o container do mapa ocupe toda a tela */
+  .leaflet-container {
+    width: 100vw !important;
+    height: 100vh !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 1 !important;
+    touch-action: pan-y !important;
+  }
+  
+  /* Ajustar controles para melhor usabilidade em mobile */
+  .leaflet-control-zoom {
+    margin: 15px !important;
+    padding: 5px !important;
+  }
+  
+  .leaflet-control-zoom a {
+    width: 40px !important;
+    height: 40px !important;
+    line-height: 40px !important;
+    font-size: 18px !important;
+  }
+  
+  /* Aumentar área de clique dos marcadores */
+  .leaflet-marker-icon {
+    touch-action: none !important;
+    transform-origin: center !important;
+    transform: scale(1.2) !important; /* Marcadores ligeiramente maiores em mobile */
+  }
+  
+  /* Melhorar visibilidade dos marcadores em mobile */
+  .activity-marker-container, 
+  .activity-marker {
+    transform: scale(1.3) !important;
+    filter: drop-shadow(0 0 10px rgba(0,0,0,0.6)) !important;
+  }
+}
+
+/* Forçar o mapa a ocupar a tela inteira */
+html, body {
+  height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.leaflet-container,
+div.leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+  position: absolute !important;
+  overflow: hidden !important;
 } 
