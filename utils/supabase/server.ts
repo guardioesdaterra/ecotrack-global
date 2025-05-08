@@ -1,25 +1,11 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createServerSupabaseClient } from './index'
 import type { Database } from '@/types/supabase'
+import type { GetServerSidePropsContext } from 'next'
 
-export async function createClient() {
-  const cookieStore = cookies()
-
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string, options: any) {
-          cookieStore.set({ name, value: '', ...options })
-        },
-      },
-    }
-  )
+/**
+ * @deprecated Use createServerSupabaseClient() from utils/supabase/index.ts directly
+ * This function is maintained for backward compatibility
+ */
+export async function createClient(context?: GetServerSidePropsContext) {
+  return await createServerSupabaseClient(context)
 } 

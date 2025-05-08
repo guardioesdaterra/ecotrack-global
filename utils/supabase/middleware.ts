@@ -2,8 +2,11 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { Database } from '@/types/supabase'
 
+/**
+ * Updates the user session in middleware
+ * This handles authentication refresh on each request
+ */
 export async function updateSession(request: NextRequest) {
-  // Create an unmodified response
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -19,7 +22,6 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: any) {
-          // Setting cookies on the response
           request.cookies.set({
             name,
             value,
@@ -37,7 +39,6 @@ export async function updateSession(request: NextRequest) {
           })
         },
         remove(name: string, options: any) {
-          // Removing cookies from the response
           request.cookies.set({
             name,
             value: '',
@@ -58,8 +59,7 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // This will refresh session if expired - required for Server Components
-  // https://supabase.com/docs/guides/auth/server-side/nextjs
+  // This is essential - it refreshes the auth session if it exists
   await supabase.auth.getUser()
 
   return response

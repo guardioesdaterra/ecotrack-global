@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, Suspense } from "react"
 import { useAuth } from "@/contexts/auth-context"
-import { getUserActivities } from "@/lib/supabase"
+import { getUserActivities } from "@/utils/supabase/index"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"

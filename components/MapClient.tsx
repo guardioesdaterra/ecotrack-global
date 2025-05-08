@@ -11,7 +11,7 @@ import { ParticleEffect } from "@/components/particle-effect"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { motion, AnimatePresence } from "framer-motion"
 import { Sparkles, Zap, Leaf, Droplets, BookOpen, Shield, Wind } from "lucide-react"
-import { ConnectionLines } from "./connection-lines"
+import { ConnectionLines as ConnectionLinesComponent } from "./connection-lines"
 import { getActivityColor } from "@/components/map-component"
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient"
 import { useEffects } from "@/lib/effects"
@@ -307,7 +307,7 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
               />
               
               <div 
-                className="absolute inset-0 pointer-events-none opacity-10" 
+                className="absolute inset-0 pointer-events-none opacity-20" 
                 style={{ 
                   backgroundImage: 'url("/scanline.gif")',
                   backgroundRepeat: 'repeat',
@@ -461,15 +461,12 @@ function MapEffects() {
         @keyframes marker-pulse-opacity {
           0% {
             opacity: 0.7;
-            transform: translate(-50%, -50%);
           }
           50% {
             opacity: 0.3;
-            transform: translate(-50%, -50%);
           }
           100% {
             opacity: 0.7;
-            transform: translate(-50%, -50%);
           }
         }
         
@@ -570,8 +567,8 @@ function configureMapController(map: L.Map, isMobile: boolean) {
   
   try {
     // Set proper min/max zoom levels for better mobile experience
-    map.options.minZoom = 2;
-    map.options.maxZoom = 5;
+    map.options.minZoom = 1.5;
+    map.options.maxZoom = 7;
 
     // Set initial view with appropriate zoom levels without animation
     map.setView([0, 0], isMobile ? 1.8 : 2.5, { animate: false });
@@ -645,14 +642,8 @@ function configureMapController(map: L.Map, isMobile: boolean) {
   }
 }
 
-// Define Map Context Type
-interface MapContextType {
-  map: L.Map | null;
-  processedActivities: Activity[];
-}
-
 // Create MapContext for passing the map instance
-const MapContext = createContext<MapContextType>({ map: null, processedActivities: [] });
+const MapContext = createContext<L.Map | null>(null);
 
 // Change the signature of ActivityNode to accept the needed map and not use useMap
 function ActivityNode({ activity, map }: { activity: Activity, map: L.Map | null }) {
@@ -773,9 +764,8 @@ function ActivityNode({ activity, map }: { activity: Activity, map: L.Map | null
         align-items: center;
         justify-content: center;
         overflow: visible;
-        z-index: 99999999 !important;
-        visibility: visible !important;
-        opacity: 1 !important;
+        cursor: pointer;
+        z-index: 99999 !important;
       ">
       <div class="activity-marker" style="
         width: 30px; 
@@ -791,10 +781,8 @@ function ActivityNode({ activity, map }: { activity: Activity, map: L.Map | null
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        z-index: 99999999 !important;
-        transition: none !important;
-        visibility: visible !important;
-        opacity: 1 !important;
+        z-index: 99999 !important;
+        transition: box-shadow 0.3s ease;
       "></div>
       ${activity.originalLat !== undefined ? `
         <div style="
@@ -828,8 +816,6 @@ function ActivityNode({ activity, map }: { activity: Activity, map: L.Map | null
         transform: translate(-50%, -50%);
         animation: marker-pulse-opacity 2s infinite;
         z-index: 99997 !important;
-        visibility: visible !important;
-        display: block !important;
       "></div>
       </div>
     `,
@@ -939,6 +925,21 @@ function ActivityNode({ activity, map }: { activity: Activity, map: L.Map | null
             }
           });
           
+          // Add hover handler
+          marker.on('mouseover', (e) => {
+            try {
+              // Force high z-index for marker element during hover
+            const el = e.target.getElement();
+            if (el) {
+              el.style.zIndex = '99999';
+              el.style.position = 'absolute';
+              el.style.pointerEvents = 'auto';
+            }
+            } catch (e) {
+              console.error("Error handling marker hover:", e);
+            }
+          });
+          
           // Add the marker to the map with a slight delay to ensure DOM is ready
           setTimeout(() => {
             try {
@@ -996,26 +997,9 @@ function ActivityNode({ activity, map }: { activity: Activity, map: L.Map | null
       {/* CSS additional specific for this marker */}
       <style jsx global>{`
         .super-high-z-marker {
-          z-index: 99999999 !important;
+          z-index: 99999 !important;
           position: absolute !important;
           pointer-events: auto !important;
-          visibility: visible !important;
-          opacity: 1 !important;
-          display: block !important;
-        }
-        
-        /* Force marker visibility */
-        .leaflet-marker-pane {
-          z-index: 9999999 !important;
-          visibility: visible !important;
-          display: block !important;
-        }
-        
-        .leaflet-marker-icon {
-          visibility: visible !important;
-          opacity: 1 !important;
-          display: block !important;
-          position: absolute !important;
         }
       `}</style>
     </>
@@ -1026,8 +1010,6 @@ function MapOverlays({ map }: { map: L.Map }) {
   const [gridImageLoaded, setGridImageLoaded] = useState(true);
   const [scanlineImageLoaded, setScanlineImageLoaded] = useState(true);
   const [particlesActive, setParticlesActive] = useState(true);
-  // Get activities from the parent scope to use in particle effects
-  const { processedActivities } = useContext(MapContext);
   
   useEffect(() => {
     // Check if grid overlay image exists
@@ -1043,22 +1025,8 @@ function MapOverlays({ map }: { map: L.Map }) {
     scanlineImg.src = '/scanline.gif';
   }, []);
   
-  // Convert to BaseActivity type for the particle components
-  const baseActivities = useMemo(() => {
-    if (!processedActivities) return [];
-    return processedActivities.map(activity => convertToBaseActivity(activity));
-  }, [processedActivities]);
-  
   return (
     <>
-      {/* Activity-to-Activity particles */}
-      {particlesActive && processedActivities && processedActivities.length > 1 && (
-        <>
-          <ParticleEffect activities={baseActivities} map={map} />
-          <ConnectionLines activities={baseActivities} map={map} />
-        </>
-      )}
-      
       {/* Partículas animadas */}
       {particlesActive && (
         <div className="absolute inset-0 pointer-events-none overflow-visible particle-container" style={{ zIndex: 9999 }}>
@@ -1128,7 +1096,7 @@ function MapOverlays({ map }: { map: L.Map }) {
             backgroundSize: "cover",
             backgroundRepeat: "repeat",
             mixBlendMode: "overlay",
-            opacity: 0.3
+            opacity: 0.5
           }}
         />
       ) : (
@@ -1275,7 +1243,7 @@ function mapPaneCreator(map: L.Map) {
         map.createPane('superMarkerPane');
         const pane = map.getPane('superMarkerPane');
         if (pane) {
-          pane.style.zIndex = '9999999';
+          pane.style.zIndex = '9000';
           pane.style.pointerEvents = 'auto';
         }
       } catch (e) {
@@ -1491,7 +1459,7 @@ function spreadOverlappingMarkers(activities: Activity[]): Activity[] {
 }
 
 // Replace the StaticMap function with an updated version that properly handles the watercolor maps
-function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stadiaApiKey?: string | null }) {
+function StaticMap({ activities: propActivities, stadiaApiKey }: { activities?: Activity[], stadiaApiKey?: string | null }) {
   const { resolvedTheme } = useTheme();
   const isMobile = typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -1505,19 +1473,19 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
   
   // Process activities on mount
   useEffect(() => {
-    if (!activities || activities.length === 0) return;
+    if (!propActivities || propActivities.length === 0) return;
     
-    console.log(`Processing ${activities.length} activities for markers`, activities);
+    console.log(`Processing ${propActivities.length} activities for markers`, propActivities);
     
     // Process activities (spread overlapping markers, etc.)
     try {
-      const spreadActivities = spreadOverlappingMarkers(activities);
+      const spreadActivities = spreadOverlappingMarkers(propActivities);
       setProcessedActivities(spreadActivities);
     } catch (e) {
       console.error("Error processing activities:", e);
-      setProcessedActivities(activities || []);
+      setProcessedActivities(propActivities || []);
     }
-  }, [activities]);
+  }, [propActivities]);
   
   // Helper to add timers with automatic cleanup
   const addTimer = useCallback((callback: () => void, delay: number): NodeJS.Timeout => {
@@ -1609,8 +1577,8 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
           }
           
           // Configure map options in a separate step
-          mapInstanceRef.current.setMinZoom(2);
-          mapInstanceRef.current.setMaxZoom(5);
+          mapInstanceRef.current.setMinZoom(1.5);
+          mapInstanceRef.current.setMaxZoom(7);
           mapInstanceRef.current.setView([0, 0], isMobile ? 1.8 : 2.5, { animate: false });
           
           // Signal map is ready and move to final phase
@@ -1776,7 +1744,7 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
         // Create watercolor base layer
         try {
           // Using direct L.tileLayer instead of safeTileLayer
-          const watercolorLayer = leaflet.tileLayer('https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg', {
+          const watercolorLayer = leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: 'Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under CC BY SA.',
             opacity: 0.7,
             errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
@@ -1789,7 +1757,7 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
           });
           
           // Adicionar listener para erro e tentar o fallback
-          watercolorLayer.on('tileerror', () => {
+          watercolorLayer.on('tileerror', (event) => {
             console.warn("Watercolor tiles falhou, usando fallback");
             if (mapInstanceRef.current) {
               fallbackLayer.addTo(mapInstanceRef.current);
@@ -1845,12 +1813,12 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
                 console.log("Adding watercolor layer to map");
                 
                 // Adicionar um evento para verificar se os tiles estão carregando
-                tileLayersRef.current[0].on('tileerror', (error) => {
-                  console.error("Erro ao carregar tile do watercolor:", error);
+                tileLayersRef.current[0].on('tileerror', (event) => {
+                  console.error("Erro ao carregar tile do watercolor:", event);
                 });
                 
-                tileLayersRef.current[0].on('tileload', (tile) => {
-                  console.log("Tile do watercolor carregado com sucesso", tile);
+                tileLayersRef.current[0].on('tileload', (event) => {
+                  console.log("Tile do watercolor carregado com sucesso", event);
                 });
                 
                 tileLayersRef.current[0].addTo(mapInstanceRef.current);
@@ -1960,23 +1928,28 @@ function StaticMap({ activities, stadiaApiKey }: { activities?: Activity[], stad
         }}
       />
       
-      {/* Provide map and processedActivities through context */}
-      <MapContext.Provider value={{ map: mapInstanceRef.current, processedActivities }}>
-        {/* Map overlays with fixed z-index - pass map instance directly */}
-        {mapInstanceRef.current && layersReady && <MapOverlays map={mapInstanceRef.current} />}
-        
-        {/* Add markers once the layers are ready */}
-        {mapInstanceRef.current && layersReady && processedActivities.map(activity => (
-          <ActivityNode 
-            key={activity.id} 
-            activity={activity} 
-            map={mapInstanceRef.current} 
-          />
-        ))}
-        
-        {/* MapEffects for styles */}
-        {mapInstanceRef.current && layersReady && <MapEffects />}
-      </MapContext.Provider>
+      {/* Map overlays with fixed z-index - pass map instance directly */}
+      {mapInstanceRef.current && layersReady && <MapOverlays map={mapInstanceRef.current} />}
+      
+      {/* Add markers once the layers are ready */}
+      {mapInstanceRef.current && layersReady && processedActivities.map(activity => (
+        <ActivityNode 
+          key={activity.id} 
+          activity={activity} 
+          map={mapInstanceRef.current} 
+        />
+      ))}
+      
+      {/* Add ParticleEffect component with type assertion */}
+      {mapInstanceRef.current && layersReady && processedActivities.length > 0 && (
+        <ParticleEffect 
+          activities={processedActivities as any} 
+          map={mapInstanceRef.current} 
+        />
+      )}
+      
+      {/* MapEffects for styles */}
+      {mapInstanceRef.current && layersReady && <MapEffects />}
       
       {/* Loading spinner while map is initializing */}
       {!layersReady && (

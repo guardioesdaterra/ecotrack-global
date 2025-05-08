@@ -307,16 +307,17 @@ body[data-performance-mode="low"] .scanline {
   font-family: 'Inter', sans-serif;
 }
 
-/* REMOVED hover styles for markers */
+/* Enhanced marker animation for hover effects */
 .activity-marker-hover {
-  transition: box-shadow 0.2s ease-in-out;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              box-shadow 0.2s ease-in-out;
 }
 
-/* REMOVED hover transform */
 .activity-marker-hover:hover,
 .activity-marker:hover {
-  transform: none !important;
-  box-shadow: 0 0 20px var(--color, cyan), 0 0 40px var(--color, cyan) !important;
+  transform: scale(1.2) !important;
+  box-shadow: 0 0 20px var(--color, cyan), 
+              0 0 40px var(--color, cyan) !important;
   z-index: 99999 !important;
 }
 
@@ -626,6 +627,20 @@ body {
   visibility: visible !important;
 }
 
+/* Melhorar a aparência dos marcadores */
+.activity-marker-hover {
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              box-shadow 0.2s ease-in-out;
+}
+
+.activity-marker-hover:hover,
+.activity-marker:hover {
+  transform: scale(1.2) !important;
+  box-shadow: 0 0 20px var(--color, cyan), 
+              0 0 40px var(--color, cyan) !important;
+  z-index: 99999 !important;
+}
+
 /* Animações para partículas flutuantes */
 @keyframes float-particle {
   0% {
@@ -782,28 +797,5 @@ body[data-performance-mode="low"] .particle-pulse {
 .leaflet-marker-pane div:hover,
 .leaflet-marker-icon div:hover,
 [class*="marker"] div:hover {
-  transform: none !important;
-}
-
-/* Completely disable all hover interactions for markers */
-.activity-marker,
-.activity-marker-container,
-.leaflet-marker-icon,
-.leaflet-marker-icon div,
-[class*="marker"],
-.super-high-z-marker {
-  pointer-events: auto !important; /* Keep click events working */
-  transition: none !important;
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-/* Only apply to hover state and allow default transform for positioning */
-.activity-marker-container:hover,
-.leaflet-marker-icon:hover,
-.leaflet-marker-icon div:hover,
-[class*="marker"]:hover,
-.super-high-z-marker:hover {
   transform: none !important;
 }

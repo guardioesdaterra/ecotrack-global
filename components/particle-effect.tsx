@@ -388,41 +388,31 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
 
     // Generate connections between activities
     const connections: Connection[] = [];
-    const shuffledActivities = shuffleArray([...activities]);
     
-    // Track connections per activity (limit to 4 per activity)
-    const connectionsPerActivity = new Map<string, number>();
-    shuffledActivities.forEach(activity => {
-      connectionsPerActivity.set(activity.id, 0);
-    });
-    
-    // Process up to 30 activities for connections
-    const maxActivities = Math.min(shuffledActivities.length, 30);
-    const processedActivities = shuffledActivities.slice(0, maxActivities);
-    
-    // Create connections (max 4 per activity)
-    processedActivities.forEach((source) => {
-      if ((connectionsPerActivity.get(source.id) || 0) >= 4) return;
+    // For each activity, connect to 3 other random activities
+    activities.forEach((source: Activity) => {
+      // Find all possible targets (excluding self)
+      const possibleTargets = activities.filter((target: Activity) => target.id !== source.id);
       
-      // Find possible targets
-      const possibleTargets = processedActivities.filter(a => 
-        a.id !== source.id && 
-        (connectionsPerActivity.get(a.id) || 0) < 4 &&
-        !connections.some(c => 
-          (c.source.id === source.id && c.target.id === a.id) || 
-          (c.source.id === a.id && c.target.id === source.id)
-        )
-      );
+      // If we don't have enough targets, skip (need at least 1)
+      if (possibleTargets.length === 0) return;
       
-      if (possibleTargets.length > 0) {
-        // Get random targets
-        const remainingSlots = 4 - (connectionsPerActivity.get(source.id) || 0);
-        const targetsToConnectCount = Math.min(remainingSlots, Math.min(3, possibleTargets.length));
-        const shuffledTargets = shuffleArray([...possibleTargets]);
-        const selectedTargets = shuffledTargets.slice(0, targetsToConnectCount);
+      // Determine how many connections to make (up to 3, but limited by available targets)
+      const connectionsToMake = Math.min(3, possibleTargets.length);
+      
+      // Shuffle targets and take the first N
+      const selectedTargets = shuffleArray([...possibleTargets]).slice(0, connectionsToMake);
+      
+      // Create connections to each selected target
+      selectedTargets.forEach((target: Activity) => {
+        // Check if this connection already exists (either direction)
+        const connectionExists = connections.some(conn => 
+          (conn.source.id === source.id && conn.target.id === target.id) ||
+          (conn.source.id === target.id && conn.target.id === source.id)
+        );
         
-        // Create connections
-        selectedTargets.forEach(target => {
+        // Only add if connection doesn't exist yet
+        if (!connectionExists) {
           // Randomly assign positive or negative curve direction for variety
           const curveDirection = Math.random() > 0.5 ? 1 : -1;
           
@@ -432,11 +422,8 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
             id: `${source.id}-${target.id}`,
             curveDirection
           });
-          
-          connectionsPerActivity.set(source.id, (connectionsPerActivity.get(source.id) || 0) + 1);
-          connectionsPerActivity.set(target.id, (connectionsPerActivity.get(target.id) || 0) + 1);
-        });
-      }
+        }
+      });
     });
     
     connectionsRef.current = connections;
@@ -502,6 +489,49 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
       frameRef.current = null;
     }
 
+    // Create debug dots to visualize exact marker positions (temporary for debugging)
+    const createMarkerDebugDots = () => {
+      if (!containerRef.current) return;
+      
+      // Remove existing debug dots
+      const existingDots = document.querySelectorAll('.marker-debug-dot');
+      existingDots.forEach(dot => dot.parentNode?.removeChild(dot));
+      
+      // Create new debug dots for each activity
+      activities.forEach(activity => {
+        try {
+          const point = map.latLngToContainerPoint([
+            activity.originalLat || activity.lat,
+            activity.originalLng || activity.lng
+          ]);
+          
+          // Create a debug dot
+          const dot = document.createElement('div');
+          dot.className = 'marker-debug-dot';
+          dot.style.cssText = `
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background-color: red;
+            border-radius: 50%;
+            z-index: 10000;
+            top: ${point.y}px;
+            left: ${point.x}px;
+            transform: translate(-50%, -50%);
+          `;
+          
+          if (containerRef.current) {
+            containerRef.current.appendChild(dot);
+          }
+        } catch (err) {
+          // Silently fail
+        }
+      });
+    };
+    
+    // Uncomment this line to show debug dots
+    // createMarkerDebugDots();
+
     let lastTimestamp = 0;
     const fps = 60;
     const interval = 1000 / fps;
@@ -517,6 +547,9 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
       lastTimestamp = timestamp;
       const particles = particlesRef.current;
       
+      // For debugging - Update marker position dots 
+      // if (timestamp % 1000 < 20) createMarkerDebugDots();
+      
       particles.forEach(particle => {
         try {
           // Skip invalid particles
@@ -525,15 +558,42 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
           }
           
           // Calculate source and target positions on map
-          const sourcePoint = map.latLngToContainerPoint([
-            particle.connection.source.originalLat || particle.connection.source.lat,
-            particle.connection.source.originalLng || particle.connection.source.lng
-          ]);
+          // Use a corrected marker position - adjust if needed
+          // Leaflet uses pixel coordinates for marker display
+          const sourceMarker = document.querySelector(`.activity-marker[data-activity-id="${particle.connection.source.id}"]`);
+          const targetMarker = document.querySelector(`.activity-marker[data-activity-id="${particle.connection.target.id}"]`);
           
-          const targetPoint = map.latLngToContainerPoint([
-            particle.connection.target.originalLat || particle.connection.target.lat,
-            particle.connection.target.originalLng || particle.connection.target.lng
-          ]);
+          let sourcePoint, targetPoint;
+          
+          // Try to get exact marker positions from DOM if available
+          if (sourceMarker && targetMarker) {
+            const sourceRect = sourceMarker.getBoundingClientRect();
+            const targetRect = targetMarker.getBoundingClientRect();
+            
+            const mapContainerRect = map.getContainer().getBoundingClientRect();
+            
+            // Calculate position relative to map container
+            sourcePoint = {
+              x: sourceRect.left + sourceRect.width/2 - mapContainerRect.left,
+              y: sourceRect.top + sourceRect.height/2 - mapContainerRect.top
+            };
+            
+            targetPoint = {
+              x: targetRect.left + targetRect.width/2 - mapContainerRect.left,
+              y: targetRect.top + targetRect.height/2 - mapContainerRect.top
+            };
+          } else {
+            // Fallback to lat/lng calculation
+            sourcePoint = map.latLngToContainerPoint([
+              particle.connection.source.originalLat || particle.connection.source.lat,
+              particle.connection.source.originalLng || particle.connection.source.lng
+            ]);
+            
+            targetPoint = map.latLngToContainerPoint([
+              particle.connection.target.originalLat || particle.connection.target.lat,
+              particle.connection.target.originalLng || particle.connection.target.lng
+            ]);
+          }
           
           // Update progress
           particle.progress += particle.speed / 100;

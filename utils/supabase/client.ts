@@ -1,9 +1,10 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createBrowserSupabaseClient } from './index'
 import type { Database } from '@/types/supabase'
 
+/**
+ * @deprecated Use createBrowserSupabaseClient() from utils/supabase/index.ts directly
+ * This function is maintained for backward compatibility
+ */
 export function createClient() {
-  return createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  return createBrowserSupabaseClient()
 } 

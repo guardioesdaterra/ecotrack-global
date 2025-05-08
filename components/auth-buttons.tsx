@@ -5,7 +5,7 @@ import { LogIn, LogOut, User as UserIcon, Activity, BarChart2 } from "lucide-rea
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient"
+import { createBrowserSupabaseClient } from "@/utils/supabase/index"
 import { useEffect, useState, useRef } from "react"
 
 interface UserActivityStats {
@@ -42,12 +42,8 @@ export function AuthButtons() {
     if (!user?.id) return;
     
     try {
-      // Use getSupabaseBrowserClient to ensure we have a valid client
-      const supabaseClient = getSupabaseBrowserClient();
-      if (!supabaseClient) {
-        console.error('Supabase client not available');
-        return;
-      }
+      // Use createBrowserSupabaseClient to ensure we have a valid client
+      const supabaseClient = createBrowserSupabaseClient();
       
       const { data, error, count } = await supabaseClient
         .from('ecotrack')
