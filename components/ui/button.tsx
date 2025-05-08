@@ -40,7 +40,17 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, icon, children, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
-    const { shouldReduceAnimations } = usePerformanceMode()
+    
+    // Add a try-catch to handle potential context errors
+    let shouldReduceAnimations = false;
+    try {
+      const performanceContext = usePerformanceMode();
+      shouldReduceAnimations = performanceContext.shouldReduceAnimations;
+    } catch (e) {
+      // Fallback if the context is not available
+      console.warn("Performance context not available, using default values");
+      shouldReduceAnimations = false;
+    }
     
     // Get base color for glow based on variant
     let glowColor = "rgba(6, 182, 212, 0.15)"

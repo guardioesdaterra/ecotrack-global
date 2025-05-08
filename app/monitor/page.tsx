@@ -12,6 +12,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SafeImage } from "@/components/ui/safe-image"
 
 interface UserActivity {
   id: string;
@@ -51,6 +52,16 @@ export default function MonitorPage() {
   const [searchTerm, setSearchTerm] = useState("")
   
   const router = useRouter()
+  
+  // Custom image loader to handle Supabase URLs
+  const customLoader = ({ src }: { src: string }) => {
+    // If it's a Supabase URL, return it directly
+    if (src.includes('supabase.co')) {
+      return src;
+    }
+    // Otherwise, let Next.js handle it
+    return src;
+  };
   
   // Refs for animation targets
   const pageContainerRef = useRef<HTMLDivElement>(null)
@@ -320,14 +331,44 @@ export default function MonitorPage() {
   
   // Parse photos from the activity
   const getActivityPhotos = (activity: UserActivity): string[] => {
-    if (!activity.photos) return []
+    if (!activity.photos) return [];
     
     try {
-      const photos = JSON.parse(activity.photos)
-      return Array.isArray(photos) ? photos : []
+      // Try to parse as JSON first
+      let photos: string[] = [];
+      
+      if (typeof activity.photos === 'string') {
+        // Check if it's already a URL
+        if (activity.photos.startsWith('http')) {
+          return [activity.photos];
+        }
+        
+        // Try to parse as JSON
+        try {
+          const parsed = JSON.parse(activity.photos);
+          photos = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          // If parsing fails, treat it as a single URL string
+          photos = [activity.photos];
+        }
+      } else if (Array.isArray(activity.photos)) {
+        photos = activity.photos;
+      }
+      
+      // Filter out invalid URLs
+      return photos.filter(url => {
+        if (!url) return false;
+        try {
+          new URL(url); // This will throw if URL is invalid
+          return true;
+        } catch (e) {
+          console.warn("Invalid photo URL:", url);
+          return false;
+        }
+      });
     } catch (e) {
-      console.error("Error parsing photos:", e)
-      return []
+      console.error("Error processing photos:", e);
+      return [];
     }
   }
   
@@ -495,7 +536,7 @@ export default function MonitorPage() {
                     <div className="relative">
                       {photos.length > 0 ? (
                         <div className="h-48 relative overflow-hidden">
-                          <Image
+                          <SafeImage
                             src={photos[0]}
                             alt={activity.title}
                             fill

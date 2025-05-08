@@ -13,7 +13,30 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const { optimizeForNavigation, performanceMode, shouldReduceAnimations } = usePerformanceMode()
+  
+  // Add error handling for performance context
+  const [performanceState, setPerformanceState] = useState({
+    performanceMode: "medium" as "high" | "medium" | "low",
+    shouldReduceAnimations: false,
+    optimizeForNavigation: (isNavigating: boolean) => {}
+  })
+  
+  // Try to get the real performance context, but fallback to defaults if it fails
+  useEffect(() => {
+    try {
+      const { performanceMode, shouldReduceAnimations, optimizeForNavigation } = usePerformanceMode()
+      setPerformanceState({
+        performanceMode,
+        shouldReduceAnimations,
+        optimizeForNavigation
+      })
+    } catch (e) {
+      console.warn("Performance context not available in AppShell, using default values")
+    }
+  }, [])
+  
+  const { performanceMode, shouldReduceAnimations, optimizeForNavigation } = performanceState
+  
   const [isPending, startTransition] = useTransition()
   const [key, setKey] = useState(pathname)
   
@@ -24,14 +47,21 @@ export function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     if (key !== pathname) {
       startTransition(() => {
-        // Using startTransition to mark navigation updates as transitions
-        // This prevents the UI from being blocked during the transition
-        optimizeForNavigation(true)
+        try {
+          optimizeForNavigation(true)
+        } catch (e) {
+          console.warn("Failed to optimize for navigation", e)
+        }
+        
         setKey(pathname)
         
         // Clean up after transition completes
         setTimeout(() => {
-          optimizeForNavigation(false)
+          try {
+            optimizeForNavigation(false)
+          } catch (e) {
+            console.warn("Failed to complete navigation optimization", e)
+          }
         }, 200) // Reduced from 300ms to 200ms for faster perception
       })
     }

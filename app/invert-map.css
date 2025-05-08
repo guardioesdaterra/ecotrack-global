@@ -145,4 +145,57 @@ html, body, #__next, main {
   height: 100% !important;
   width: 100% !important;
   overflow: hidden !important;
+}
+
+/* Map Inversion Styles */
+
+/* Base inverted map styles */
+.leaflet-container.inverted-map {
+  filter: invert(100%) hue-rotate(180deg);
+}
+
+/* Fix markers and controls so they don't get inverted */
+.leaflet-container.inverted-map .leaflet-marker-icon,
+.leaflet-container.inverted-map .leaflet-control,
+.leaflet-container.inverted-map .activity-marker,
+.leaflet-container.inverted-map .activity-popup,
+.leaflet-container.inverted-map .leaflet-popup-content-wrapper,
+.leaflet-container.inverted-map .leaflet-popup-tip {
+  filter: invert(100%) hue-rotate(180deg); /* Double inversion restores original colors */
+}
+
+/* Customize text colors to ensure readability */
+.leaflet-container.inverted-map .leaflet-popup-content {
+  color: #333;
+}
+
+/* Ensure attribution text is readable */
+.leaflet-container.inverted-map .leaflet-control-attribution {
+  color: #333;
+  background-color: rgba(255, 255, 255, 0.8);
+}
+
+/* Apply a slight brightness adjustment for better contrast */
+.leaflet-container.inverted-map .leaflet-tile-pane {
+  filter: brightness(1.05) contrast(1.05);
+}
+
+/* Additional tweaks for UI elements */
+.leaflet-container.inverted-map .leaflet-bar {
+  border-color: #333;
+}
+
+.leaflet-container.inverted-map .leaflet-bar a {
+  background-color: #fff;
+  color: #333;
+}
+
+.leaflet-container.inverted-map .leaflet-bar a:hover {
+  background-color: #f4f4f4;
+}
+
+/* Adjust popup shadows after inversion */
+.leaflet-container.inverted-map .leaflet-popup-content-wrapper,
+.leaflet-container.inverted-map .leaflet-popup-tip {
+  box-shadow: 0 3px 14px rgba(0,0,0,0.4);
 } 

@@ -1,13 +1,21 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion" 
+import { PerformanceProvider } from "@/hooks/use-performance-mode"
 
 export default function MonitorLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const [error, setError] = useState<Error | null>(null)
+
+  // Reset error state if children change
+  useEffect(() => {
+    setError(null)
+  }, [children])
+
   return (
     <div className="min-h-screen bg-gray-950">
       {/* Background elements */}
@@ -47,8 +55,52 @@ export default function MonitorLayout({
 
       {/* Main content */}
       <main>
-        {children}
+        {/* Add nested PerformanceProvider for extra protection */}
+        <PerformanceProvider>
+          {error ? (
+            <div className="p-8 text-center">
+              <h2 className="text-red-500 text-2xl mb-4">Something went wrong</h2>
+              <p className="text-gray-300 mb-4">{error.message}</p>
+              <button 
+                onClick={() => setError(null)}
+                className="px-4 py-2 bg-cyan-600 rounded-md hover:bg-cyan-500 transition"
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <ErrorBoundary setError={setError}>
+              {children}
+            </ErrorBoundary>
+          )}
+        </PerformanceProvider>
       </main>
     </div>
   )
+}
+
+// Simple error boundary component
+function ErrorBoundary({
+  children, 
+  setError
+}: {
+  children: React.ReactNode
+  setError: (error: Error) => void
+}) {
+  useEffect(() => {
+    // Create global error handler
+    const errorHandler = (event: ErrorEvent) => {
+      if (event.error && event.error.message && 
+          event.error.message.includes('PerformanceProvider')) {
+        console.error('Performance provider error caught:', event.error)
+        setError(event.error)
+        event.preventDefault()
+      }
+    }
+    
+    window.addEventListener('error', errorHandler)
+    return () => window.removeEventListener('error', errorHandler)
+  }, [setError])
+  
+  return <>{children}</>
 } 

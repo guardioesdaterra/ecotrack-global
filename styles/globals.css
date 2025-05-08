@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --vh: 1vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --vh: 1dvh;
+  }
+}
+
 /* Cyberpunk neon variables */
 :root {
   --neon-cyan: #06f7f7;
@@ -20,7 +30,6 @@
   --glow-blur: 5px;
   --particle-count: 100%;
   --effect-quality: 100%;
-  --vh: 1vh;
 }
 
 /* Performance mode settings via data attribute */
@@ -798,4 +807,13 @@ body[data-performance-mode="low"] .particle-pulse {
 .leaflet-marker-icon div:hover,
 [class*="marker"] div:hover {
   transform: none !important;
+}
+
+/* Use the custom vh property for reliable height calculations */
+.h-screen {
+  height: calc(100 * var(--vh));
+}
+
+.min-h-screen {
+  min-height: calc(100 * var(--vh));
 }

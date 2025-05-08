@@ -12,6 +12,8 @@ import { useSearchParams } from "next/navigation"
 import { AnimationInstance } from "@/types/animations"
 import MapClient from "@/components/MapClient"
 import { convertToMapActivity } from "@/lib/utils"
+import { OverlayProvider } from "@/contexts/overlay-context"
+import { Overlay } from "@/components/overlay"
 
 // Define the Activity interface matching what MapClient expects
 interface MapClientActivity {
@@ -598,8 +600,11 @@ function MapPageContent() {
 // Use Suspense boundary for the component that uses useSearchParams
 export default function MapPage() {
   return (
-    <Suspense fallback={<MapLoading />}>
-      <MapPageContent />
-    </Suspense>
+    <OverlayProvider>
+      <Suspense fallback={<MapLoading />}>
+        <MapPageContent />
+      </Suspense>
+      <Overlay />
+    </OverlayProvider>
   )
 } 
