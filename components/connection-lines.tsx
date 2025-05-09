@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Activity, getActivityColor } from "@/components/map-component"
 
-declare const L: any
+// Import types directly
+import type * as LeafletNamespace from 'leaflet';
+type LeafletMap = LeafletNamespace.Map;
 
 interface Connection {
   id: string
@@ -60,9 +62,21 @@ export const computeConnectionLines = (activities: Activity[]): Connection[] => 
   return connections;
 };
 
-export const ConnectionLines: React.FC<{ activities: Activity[], map: L.Map }> = ({ activities, map }) => {
-  const [connections, setConnections] = useState<Connection[]>([])
+export const ConnectionLines: React.FC<{ activities: Activity[], map: LeafletNamespace.Map }> = ({ activities, map }) => {
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const animationTimers = useRef<number[]>([]);
+  const mapRef = useRef<LeafletNamespace.Map | null>(null);
+  const lines = useRef<LeafletNamespace.Polyline[]>([]);
 
+  // Update map ref when map changes
+  useEffect(() => {
+    mapRef.current = map;
+    return () => {
+      mapRef.current = null;
+    };
+  }, [map]);
+
+  // Generate connections when activities change
   useEffect(() => {
     // Generate random connections
     if (activities.length >= 2) {
@@ -104,28 +118,45 @@ export const ConnectionLines: React.FC<{ activities: Activity[], map: L.Map }> =
         });
       });
       
+      // Only update if connections actually changed
       setConnections(newConnections);
     }
   }, [activities]);
 
+  // Cleanup function to clear all animation timers
+  const clearAllAnimationTimers = () => {
+    animationTimers.current.forEach(timerId => {
+      clearTimeout(timerId);
+    });
+    animationTimers.current = [];
+  };
+
+  // Draw connections on the map
   useEffect(() => {
-    if (!L || !map) return;
+    if (!mapRef.current || typeof window === 'undefined') return;
+    
+    const currentMap = mapRef.current;
+    const L = window.L;
+    if (!L) return;
 
     // Clear existing lines
-    map.eachLayer((layer: any) => {
-      if (layer instanceof L.Polyline && layer._connection) {
-        map.removeLayer(layer);
+    lines.current.forEach(line => {
+      if (currentMap.hasLayer(line)) {
+        currentMap.removeLayer(line);
       }
     });
+    lines.current = [];
+    
+    // Clear any existing animation timers
+    clearAllAnimationTimers();
 
-    const lines: any[] = [];
-
+    // Create new lines
     connections.forEach((connection) => {
       const fromActivity = activities.find(a => a.id === connection.from_activity_id);
       const toActivity = activities.find(a => a.id === connection.to_activity_id);
       
       if (fromActivity && toActivity) {
-        const latlngs: any[] = [
+        const latlngs: [number, number][] = [
           [fromActivity.lat, fromActivity.lng],
           [toActivity.lat, toActivity.lng],
         ];
@@ -143,20 +174,20 @@ export const ConnectionLines: React.FC<{ activities: Activity[], map: L.Map }> =
         });
         
         // Add custom property to identify this as a connection line
-        line._connection = connection.id;
+        (line as any)._connection = connection.id;
         
         // Add the line to the map
-        line.addTo(map);
+        line.addTo(currentMap);
         
-        // Store in array for cleanup
-        lines.push(line);
+        // Store in ref array for cleanup
+        lines.current.push(line);
         
         // Add animated opacity effect
         let fadeDirection = 1;
         let opacity = 0.5;
         
         const animateLine = () => {
-          if (!line || !map.hasLayer(line)) return;
+          if (!line || !currentMap.hasLayer(line)) return;
           
           opacity += 0.01 * fadeDirection;
           
@@ -167,8 +198,9 @@ export const ConnectionLines: React.FC<{ activities: Activity[], map: L.Map }> =
           // Update opacity
           line.setStyle({ opacity });
           
-          // Continue animation
-          setTimeout(animateLine, 50);
+          // Continue animation with requestAnimationFrame
+          const timerId = window.setTimeout(animateLine, 50);
+          animationTimers.current.push(timerId);
         };
         
         // Start the animation
@@ -176,12 +208,18 @@ export const ConnectionLines: React.FC<{ activities: Activity[], map: L.Map }> =
       }
     });
 
+    // Cleanup function
     return () => {
-      lines.forEach(line => {
-        if (map.hasLayer(line)) {
-          map.removeLayer(line);
+      // Clear all animation timers
+      clearAllAnimationTimers();
+      
+      // Remove all lines from the map
+      lines.current.forEach(line => {
+        if (currentMap && currentMap.hasLayer(line)) {
+          currentMap.removeLayer(line);
         }
       });
+      lines.current = [];
     };
   }, [map, activities, connections]);
 

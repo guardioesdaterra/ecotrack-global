@@ -20,16 +20,16 @@ export function Sidebar() {
   const { showOverlay } = useOverlay()
   const [glitchIndex, setGlitchIndex] = useState<number | null>(null)
   
-  // Randomized glitch effect on hover
-  useEffect(() => {
-    if (glitchIndex !== null) {
-      const timeout = setTimeout(() => {
-        setGlitchIndex(null)
-      }, 1000)
+  // Disable hover effects
+  // useEffect(() => {
+  //   if (glitchIndex !== null) {
+  //     const timeout = setTimeout(() => {
+  //       setGlitchIndex(null)
+  //     }, 1000)
       
-      return () => clearTimeout(timeout)
-    }
-  }, [glitchIndex])
+  //     return () => clearTimeout(timeout)
+  //   }
+  // }, [glitchIndex])
   
   return (
     <>
@@ -64,7 +64,6 @@ export function Sidebar() {
                 label="Home"
                 isActive={pathname === "/"} 
                 index={0}
-                onHover={() => setGlitchIndex(0)}
                 isGlitching={glitchIndex === 0}
               />
               
@@ -74,7 +73,6 @@ export function Sidebar() {
                 label="Map"
                 isActive={pathname === "/map"} 
                 index={1}
-                onHover={() => setGlitchIndex(1)}
                 isGlitching={glitchIndex === 1}
               />
               
@@ -100,7 +98,6 @@ export function Sidebar() {
                 label="Monitor"
                 isActive={pathname === "/monitor"} 
                 index={2}
-                onHover={() => setGlitchIndex(2)}
                 isGlitching={glitchIndex === 2}
               />
               
@@ -110,7 +107,6 @@ export function Sidebar() {
                 label="Profile"
                 isActive={pathname === "/profile"} 
                 index={3}
-                onHover={() => setGlitchIndex(3)}
                 isGlitching={glitchIndex === 3}
               />
             </div>
@@ -150,7 +146,6 @@ export function Sidebar() {
                 isActive={pathname === "/"} 
                 vertical
                 index={0}
-                onHover={() => setGlitchIndex(0)}
                 isGlitching={glitchIndex === 0}
               />
               
@@ -161,7 +156,6 @@ export function Sidebar() {
                 isActive={pathname === "/map"} 
                 vertical
                 index={1}
-                onHover={() => setGlitchIndex(1)}
                 isGlitching={glitchIndex === 1}
               />
               
@@ -187,7 +181,6 @@ export function Sidebar() {
                 isActive={pathname === "/monitor"} 
                 vertical
                 index={2}
-                onHover={() => setGlitchIndex(2)}
                 isGlitching={glitchIndex === 2}
               />
               
@@ -198,7 +191,6 @@ export function Sidebar() {
                 isActive={pathname === "/profile"} 
                 vertical
                 index={3}
-                onHover={() => setGlitchIndex(3)}
                 isGlitching={glitchIndex === 3}
               />
             </div>
@@ -217,7 +209,6 @@ interface SidebarItemProps {
   className?: string
   vertical?: boolean
   index?: number
-  onHover?: () => void
   isGlitching?: boolean
 }
 
@@ -229,7 +220,6 @@ function SidebarItem({
   className, 
   vertical = false, 
   index = 0,
-  onHover,
   isGlitching = false
 }: SidebarItemProps) {
   return (
@@ -238,42 +228,25 @@ function SidebarItem({
       className={cn(
         "flex transition-all duration-300 relative group",
         vertical ? "flex-col items-center w-14 py-2" : "flex-col items-center justify-center px-1",
-        isActive ? "text-cyan-400" : "text-gray-500 hover:text-gray-300",
+        isActive ? "text-cyan-400" : "text-gray-500",
         className
       )}
-      onMouseEnter={onHover}
     >
       <div className={cn(
         "relative transition-all duration-300",
         isActive && "after:absolute after:w-1 after:h-1 after:bg-cyan-400 after:rounded-full after:shadow-[0_0_8px_rgba(34,211,238,0.8)] after:animate-pulse",
         vertical && isActive ? "after:left-0 after:top-1/2 after:-translate-y-1/2" : "after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:-mb-1"
       )}>
-        {isGlitching ? (
-          <motion.div
-            initial={{ opacity: 1, x: 0 }}
-            animate={{ 
-              opacity: [1, 0.3, 1, 0.6, 1],
-              x: [0, -1, 1, -1, 0]
-            }}
-            transition={{ duration: 0.5, times: [0, 0.2, 0.4, 0.6, 1] }}
-            className="text-cyan-400"
-          >
-            {icon}
-          </motion.div>
-        ) : (
-          <div className="transition-all duration-300">
-            {icon}
-          </div>
-        )}
-        
-        {/* Background glow effect */}
-        <div className="absolute inset-0 -m-2 rounded-md bg-cyan-500/0 group-hover:bg-cyan-500/10 transition-colors duration-300"></div>
+        {icon}
       </div>
+      
+      {/* Background highlight */}
+      <div className="absolute inset-0 -m-2 rounded-md bg-cyan-500/0"></div>
       
       {/* Label with glow effect on hover */}
       <span className={cn(
         "text-xs mt-1 font-medium transition-all duration-300",
-        isActive ? "text-glow-cyan" : "group-hover:text-glow-cyan"
+        isActive ? "text-glow-cyan" : ""
       )}>
         {label}
       </span>

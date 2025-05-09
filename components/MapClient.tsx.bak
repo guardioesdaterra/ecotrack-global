@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, createContext
 import "leaflet/dist/leaflet.css"
 import { useTheme } from "next-themes"
 import dynamic from "next/dynamic"
-import { Globe, Info, X } from "lucide-react"
+import { Globe } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ParticleEffect } from "@/components/particle-effect"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -19,13 +19,6 @@ import { Activity as ActivityType } from "@/components/map-component"
 import { convertToMapActivity } from "@/lib/utils"
 import { useOverlay } from "@/contexts/overlay-context"
 
-// Import touch utility functions
-import { 
-  configureTouchInteractions, 
-  enhanceMarkerTouchTargets, 
-  addTouchStyles 
-} from "@/lib/utils/touch-handler"
-
 // Import Leaflet CSS
 import "leaflet/dist/leaflet.css"
 import "leaflet.markercluster/dist/MarkerCluster.css"
@@ -34,7 +27,20 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css"
 // Import types directly
 import type { Activity as BaseActivity } from "@/components/map-component"
 import type * as LeafletNamespace from 'leaflet'
-import type { MarkerClusterGroupProps } from 'react-leaflet-markercluster'
+
+// Import a hack to extend L prototype
+// This is necessary for TypeScript to recognize the heatLayer property on L
+interface LeafletHeatExtension {
+  heatLayer: (latlngs: any[], options?: any) => L.Layer;
+}
+
+// Import the HeatLayer type from our declaration file
+import type { HeatmapLayerProps } from 'react-leaflet-heatmap-layer';
+import type { MarkerClusterGroupProps } from 'react-leaflet-markercluster';
+
+// Import our custom components that handle the library integrations
+import MapHeatLayer from './MapHeatLayer';
+import MapClusterGroup from './MapClusterGroup';
 
 // Dynamically import React-Leaflet components to avoid SSR issues
 const MapContainer = dynamic(
@@ -63,11 +69,6 @@ const ZoomControl = dynamic(
   { ssr: false }
 )
 
-const AttributionControl = dynamic(
-  () => import('react-leaflet').then((mod) => mod.AttributionControl),
-  { ssr: false }
-)
-
 // Import useMap directly instead of dynamically
 // useMap is a hook and can't be dynamically imported like a component
 import { useMap } from 'react-leaflet'
@@ -81,8 +82,17 @@ declare global {
     prevActivityImage: (id: string) => void;
     nextActivityImage: (id: string) => void;
     showGallery_: {[key: string]: () => void};
-    showActivityOverlay?: (action: "view" | "edit" | string, id: string) => void;
   }
+}
+
+// Add type declaration for leaflet.heat
+declare module 'leaflet.heat' {
+  export function heat(latlngs: any[], options?: any): L.Layer;
+}
+
+// Add type declaration for react-leaflet-heatmap-layer
+declare module 'react-leaflet-heatmap-layer' {
+  export const HeatmapLayer: React.ComponentType<any>;
 }
 
 // Helper function to debounce function calls
@@ -126,23 +136,30 @@ const useLeaflet = () => {
         // Import Leaflet MarkerCluster for clustering
         try {
           await import('leaflet.markercluster');
-          // Verify the plugin loaded correctly
-          if (!(L as any).markerClusterGroup) {
-            throw new Error("MarkerClusterGroup function not found after loading plugin");
-          }
-          console.log("MarkerClusterGroup plugin loaded successfully");
         } catch (err) {
-          console.error("Failed to load marker cluster plugin:", err);
+          console.warn("Failed to load marker cluster plugin:", err);
           // Continue without marker clustering
+        }
+        
+        // Import Leaflet Heat for heatmap functionality
+        try {
+          await import('leaflet.heat');
+          // Extend the L object with heatLayer
+          if (L) {
+            (L as unknown as LeafletHeatExtension).heatLayer = (window as any).L.heatLayer;
+          }
+        } catch (err) {
+          console.warn("Failed to load heatmap plugin:", err);
+          // Continue without heatmap
         }
         
         // Configure default markers
         if (L && L.Icon && L.Icon.Default) {
           delete (L.Icon.Default.prototype as any)._getIconUrl;
           L.Icon.Default.mergeOptions({
-            iconRetinaUrl: '/leaflet/marker-icon-2x.png',
-            iconUrl: '/leaflet/marker-icon.png',
-            shadowUrl: '/leaflet/marker-shadow.png',
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
           });
         }
         
@@ -159,38 +176,12 @@ const useLeaflet = () => {
   return { isLeafletLoaded, error };
 };
 
-// Create a hook for applying touch optimizations
-const useTouchOptimizations = (map: LeafletNamespace.Map | null, isMobile: boolean) => {
-  useEffect(() => {
-    if (!map || typeof window === 'undefined') return;
-    
-    // Apply mobile-specific optimizations
-    if (isMobile) {
-      console.log('Applying mobile touch optimizations');
-      
-      // Add enhanced touch styles
-      addTouchStyles();
-      
-      // Configure enhanced touch interactions
-      const cleanupTouchInteractions = configureTouchInteractions(map);
-      
-      // Enhance marker touch targets for better touch experience
-      enhanceMarkerTouchTargets(map);
-      
-      return () => {
-        // Clean up touch interactions
-        cleanupTouchInteractions();
-      };
-    }
-  }, [map, isMobile]);
-};
-
 interface Activity {
   id: string
   lat: number
   lng: number
   country?: string
-  address?: string
+  adress?: string
   city?: string | null
   type: string
   title: string
@@ -229,17 +220,7 @@ interface PhotoGalleryProps {
 function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }: PhotoGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const { shouldReduceAnimations } = useEffects();
-  
-  // Validate photos array for safety
-  const validatedPhotos = useMemo(() => {
-    if (!Array.isArray(photos)) {
-      console.warn('Invalid photos data:', photos);
-      return [];
-    }
-    return photos.filter(p => typeof p === 'string' && p.trim() !== '');
-  }, [photos]);
   
   // Memoize the transition duration to avoid frequent recalculations
   const transitionDuration = useMemo(() => 
@@ -248,12 +229,6 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
   );
   
   useEffect(() => {
-    // Reset error state when photos change
-    setImageError({});
-    
-    // Reset to first image when photos change
-    setCurrentIndex(0);
-    
     // Lock body scroll when gallery is open
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -269,36 +244,27 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
         document.body.style.overflow = '';
       };
     }
-  }, [isOpen, onClose, validatedPhotos]);
-  
-  // Handle image load errors
-  const handleImageError = (index: number) => {
-    setImageError(prev => ({
-      ...prev,
-      [index]: true
-    }));
-    console.warn(`Failed to load image at index ${index}:`, validatedPhotos[index]);
-  };
+  }, [isOpen, onClose]);
   
   const nextImage = useCallback(() => {
-    if (isTransitioning || validatedPhotos.length <= 1) return;
+    if (isTransitioning || photos.length <= 1) return;
     
     setIsTransitioning(true);
     setTimeout(() => {
-      setCurrentIndex((prevIndex) => (prevIndex + 1) % validatedPhotos.length);
+      setCurrentIndex((prevIndex) => (prevIndex + 1) % photos.length);
       setIsTransitioning(false);
     }, transitionDuration);
-  }, [isTransitioning, validatedPhotos.length, transitionDuration]);
+  }, [isTransitioning, photos.length, transitionDuration]);
   
   const prevImage = useCallback(() => {
-    if (isTransitioning || validatedPhotos.length <= 1) return;
+    if (isTransitioning || photos.length <= 1) return;
     
     setIsTransitioning(true);
     setTimeout(() => {
-      setCurrentIndex((prevIndex) => (prevIndex - 1 + validatedPhotos.length) % validatedPhotos.length);
+      setCurrentIndex((prevIndex) => (prevIndex - 1 + photos.length) % photos.length);
       setIsTransitioning(false);
     }, transitionDuration);
-  }, [isTransitioning, validatedPhotos.length, transitionDuration]);
+  }, [isTransitioning, photos.length, transitionDuration]);
   
   // Add keyboard navigation using arrow keys
   useEffect(() => {
@@ -313,49 +279,12 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, nextImage, prevImage]);
   
-  // Don't render anything if not open or no valid photos
-  if (!isOpen || validatedPhotos.length === 0) return null;
+  if (!isOpen) return null;
   
   // Use simpler styling for reduced motion/animations
   const containerShadow = shouldReduceAnimations 
     ? `border: 1px solid ${activityColor}40` 
     : `box-shadow: 0 0 30px ${activityColor}50, 0 0 50px ${activityColor}20; border: 1px solid ${activityColor}40`;
-  
-  // Render fallback for image error
-  const renderImage = () => {
-    if (imageError[currentIndex]) {
-      return (
-        <div 
-          className="w-full h-full flex items-center justify-center bg-gray-900"
-          style={{ 
-            opacity: isTransitioning ? 0.5 : 1,
-            transform: isTransitioning ? 'scale(0.95)' : 'scale(1)',
-            transition: `opacity ${transitionDuration}ms ease-in-out, transform ${transitionDuration}ms ease-in-out`
-          }}
-        >
-          <div className="text-center p-6">
-            <div className="mb-4 text-4xl">🖼️</div>
-            <p className="text-white/80">Image could not be loaded</p>
-            <p className="text-sm text-white/40 mt-2">{validatedPhotos[currentIndex]}</p>
-          </div>
-        </div>
-      );
-    }
-    
-    return (
-      <img 
-        src={validatedPhotos[currentIndex]} 
-        alt={`${activityTitle} - Photo ${currentIndex + 1}`}
-        className="h-full w-full object-contain"
-        style={{ 
-          transition: `opacity ${transitionDuration}ms ease-in-out, transform ${transitionDuration}ms ease-in-out`,
-          opacity: isTransitioning ? 0.5 : 1,
-          transform: isTransitioning ? 'scale(0.95)' : 'scale(1)'
-        }}
-        onError={() => handleImageError(currentIndex)}
-      />
-    );
-  };
   
   return (
     <div 
@@ -412,8 +341,17 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
             backgroundColor: 'rgba(0,0,0,0.5)' 
           }}
         >
-          {/* Fullsize Image with error handling */}
-          {renderImage()}
+          {/* Fullsize Image */}
+          <img 
+            src={photos[currentIndex]} 
+            alt={`${activityTitle} - Photo ${currentIndex + 1}`}
+            className="h-full w-full object-contain"
+            style={{ 
+              transition: `opacity ${transitionDuration}ms ease-in-out, transform ${transitionDuration}ms ease-in-out`,
+              opacity: isTransitioning ? 0.5 : 1,
+              transform: isTransitioning ? 'scale(0.95)' : 'scale(1)'
+            }}
+          />
           
           {/* Cyberpunk overlay effects - only render if not reducing animations */}
           {!shouldReduceAnimations && (
@@ -453,11 +391,11 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
               boxShadow: shouldReduceAnimations ? 'none' : `0 0 10px ${activityColor}30`
             }}
           >
-            {currentIndex + 1} / {validatedPhotos.length}
+            {currentIndex + 1} / {photos.length}
           </div>
           
           {/* Navigation buttons (only show if more than one image) */}
-          {validatedPhotos.length > 1 && (
+          {photos.length > 1 && (
             <>
               {/* Previous button */}
               <button 
@@ -491,7 +429,7 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
         </div>
         
         {/* Thumbnail navigation */}
-        {validatedPhotos.length > 1 && (
+        {photos.length > 1 && (
           <div 
             className="p-4 flex gap-2 overflow-x-auto custom-scrollbar"
             style={{
@@ -499,7 +437,7 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
               borderTop: `1px solid ${activityColor}20`
             }}
           >
-            {validatedPhotos.map((photo, index) => (
+            {photos.map((photo, index) => (
               <button
                 key={index}
                 onClick={() => {
@@ -525,11 +463,6 @@ function PhotoGallery({ photos, isOpen, onClose, activityTitle, activityColor }:
                   src={photo}
                   alt={`Thumbnail ${index + 1}`}
                   className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // Provide a fallback for thumbnail errors
-                    (e.target as HTMLImageElement).src = '/placeholder-image.jpg';
-                    (e.target as HTMLImageElement).style.opacity = '0.5';
-                  }}
                 />
               </button>
             ))}
@@ -555,7 +488,7 @@ function getActivityIcon(type: string) {
   }
 }
 
-// MapEffects component to inject animation styles with enhanced animations
+// MapEffects component to inject animation styles
 function MapEffects() {
   return (
     <style jsx global>{`
@@ -676,8 +609,8 @@ function MapEffects() {
         animation: none !important;
         box-shadow: none !important;
       }
-
-      /* Enhanced Pulse animation for markers */
+      
+      /* Pulse animation for markers */
       @keyframes marker-pulse-opacity {
         0% {
           transform: translate(-50%, -50%) scale(0.8);
@@ -693,33 +626,28 @@ function MapEffects() {
         }
       }
       
-      /* Enhanced particle animations */
       @keyframes float-particle {
-        0% { transform: translateY(0) rotate(0deg); opacity: 0.4; }
-        25% { transform: translateY(-15px) rotate(5deg); opacity: 0.7; }
-        50% { transform: translateY(10px) rotate(-5deg); opacity: 0.6; }
-        75% { transform: translateY(-8px) rotate(2deg); opacity: 0.5; }
-        100% { transform: translateY(0) rotate(0deg); opacity: 0.4; }
+        0%, 100% { transform: translateY(0) rotate(0deg); }
+        25% { transform: translateY(-10px) rotate(5deg); }
+        50% { transform: translateY(10px) rotate(-5deg); }
+        75% { transform: translateY(-5px) rotate(2deg); }
       }
       
       @keyframes float-particle-alt {
-        0% { transform: translateX(0) rotate(0deg); opacity: 0.4; }
-        25% { transform: translateX(-15px) rotate(-5deg); opacity: 0.7; }
-        50% { transform: translateX(15px) rotate(5deg); opacity: 0.6; }
-        75% { transform: translateX(-8px) rotate(-2deg); opacity: 0.5; }
-        100% { transform: translateX(0) rotate(0deg); opacity: 0.4; }
+        0%, 100% { transform: translateX(0) rotate(0deg); }
+        25% { transform: translateX(-10px) rotate(-5deg); }
+        50% { transform: translateX(10px) rotate(5deg); }
+        75% { transform: translateX(-5px) rotate(-2deg); }
       }
       
       @keyframes particle-pulse {
-        0% { opacity: 0.2; transform: scale(0.8); }
-        50% { opacity: 0.8; transform: scale(1.1); }
-        100% { opacity: 0.2; transform: scale(0.8); }
+        0%, 100% { opacity: 0.3; }
+        50% { opacity: 0.8; }
       }
       
       @keyframes pulse {
-        0% { opacity: 0.8; }
-        50% { opacity: 1; }
-        100% { opacity: 0.8; }
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
       }
       
       @keyframes scanline {
@@ -796,72 +724,80 @@ function MapEffects() {
         filter: none !important;
         animation: none !important;
       }
-
-      /* Custom styling for marker clusters */
+      
+      /* Custom MarkerCluster styling */
       .marker-cluster {
-        background-color: rgba(5, 15, 25, 0.6) !important;
-        border: 1px solid rgba(6, 247, 247, 0.4) !important;
-        box-shadow: 0 0 15px rgba(6, 247, 247, 0.3) !important;
+        background-color: rgba(5, 15, 25, 0.7) !important;
         backdrop-filter: blur(4px) !important;
+        border: 1px solid rgba(6, 247, 247, 0.3) !important;
+        box-shadow: 0 0 15px rgba(6, 247, 247, 0.3) !important;
       }
       
       .marker-cluster div {
-        background-color: rgba(5, 217, 254, 0.2) !important;
-        color: white !important;
-        text-shadow: 0 0 4px rgba(6, 247, 247, 0.8) !important;
+        background-color: rgba(6, 247, 247, 0.15) !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        text-shadow: 0 0 5px rgba(6, 247, 247, 0.8) !important;
         font-weight: bold !important;
       }
       
       .marker-cluster-small {
-        background-color: rgba(5, 15, 25, 0.6) !important;
+        background-color: rgba(5, 15, 25, 0.7) !important;
       }
       
       .marker-cluster-small div {
-        background-color: rgba(5, 217, 254, 0.2) !important;
+        background-color: rgba(6, 247, 247, 0.15) !important;
       }
       
       .marker-cluster-medium {
-        background-color: rgba(5, 15, 25, 0.6) !important;
+        background-color: rgba(5, 15, 25, 0.7) !important;
       }
       
       .marker-cluster-medium div {
-        background-color: rgba(148, 82, 245, 0.2) !important;
+        background-color: rgba(255, 123, 0, 0.15) !important;
       }
       
       .marker-cluster-large {
-        background-color: rgba(5, 15, 25, 0.6) !important;
+        background-color: rgba(5, 15, 25, 0.7) !important;
       }
       
       .marker-cluster-large div {
-        background-color: rgba(255, 42, 109, 0.2) !important;
-      }
-
-      /* Marker cluster animations */
-      .marker-cluster {
-        transition: transform 0.3s ease-out, box-shadow 0.3s ease-out !important;
+        background-color: rgba(255, 42, 109, 0.15) !important;
       }
       
-      .marker-cluster:hover {
-        transform: scale(1.05) !important;
-        box-shadow: 0 0 20px rgba(6, 247, 247, 0.5) !important;
+      /* Heatmap styling */
+      .leaflet-heatmap-layer {
+        opacity: 0.7 !important;
+        mix-blend-mode: screen !important;
       }
       
-      /* Responsive styling */
-      @media (max-width: 768px) {
-        .leaflet-control-zoom {
-          transform: scale(0.85);
-          transform-origin: bottom right;
-        }
-        
-        .marker-cluster {
-          transform-origin: center !important;
-        }
-        
-        .marker-cluster-small,
-        .marker-cluster-medium,
-        .marker-cluster-large {
-          transform: scale(0.9) !important;
-        }
+      /* Legend styling */
+      .map-legend {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(5, 15, 25, 0.8);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(6, 247, 247, 0.3);
+        box-shadow: 0 0 15px rgba(6, 247, 247, 0.2);
+        border-radius: 8px;
+        padding: 10px;
+        color: white;
+        font-size: 12px;
+        z-index: 999;
+      }
+      
+      .map-legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+      }
+      
+      .map-legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+        box-shadow: 0 0 5px currentColor;
       }
     `}</style>
   );
@@ -954,16 +890,6 @@ function configureMapController(map: L.Map, isMobile: boolean) {
 // Create MapContext for passing the map instance
 const MapContext = createContext<L.Map | null>(null);
 
-// Activity type definitions for the legend
-const activityTypes = [
-  { value: "reforestation", label: "Reforestation", color: "#00fff7", icon: <Leaf className="h-4 w-4" /> },
-  { value: "clean-up", label: "Clean-up", color: "#ff00ea", icon: <Droplets className="h-4 w-4" /> },
-  { value: "education", label: "Education", color: "#ffe600", icon: <BookOpen className="h-4 w-4" /> },
-  { value: "conservation", label: "Conservation", color: "#00ff85", icon: <Shield className="h-4 w-4" /> },
-  { value: "renewable", label: "Renewable Energy", color: "#64ff00", icon: <Zap className="h-4 w-4" /> },
-  { value: "other", label: "Other", color: "#ff007a", icon: <Globe className="h-4 w-4" /> }
-];
-
 // Function to create a marker icon with memoization
 const createMarkerIcon = (color: string, type: string): L.DivIcon | undefined => {
   if (typeof window === 'undefined' || !L) {
@@ -1009,7 +935,6 @@ const createMarkerIcon = (color: string, type: string): L.DivIcon | undefined =>
           position: absolute !important;
           top: 50% !important;
           left: 50% !important;
-          animation: marker-pulse-opacity 3s infinite ease-in-out;
         "
       ></div>
       
@@ -1064,7 +989,6 @@ function SimpleMarker({ activity }: { activity: Activity }) {
             opacity: 1 !important;
             pointer-events: auto !important;
           "
-          data-activity-id="${activity.id}"
         >
           <div class="absolute inset-0 rounded-full opacity-20" 
                style="background: ${color}; filter: blur(2px);"></div>
@@ -1084,7 +1008,6 @@ function SimpleMarker({ activity }: { activity: Activity }) {
             position: absolute !important;
             top: 50% !important;
             left: 50% !important;
-            animation: marker-pulse-opacity 3s infinite ease-in-out;
           "
         ></div>
         
@@ -1101,58 +1024,37 @@ function SimpleMarker({ activity }: { activity: Activity }) {
       iconSize: [40, 40] as L.PointExpression,
       iconAnchor: [20, 20] as L.PointExpression
     });
-  }, [color, activity.type, activity.id]);
+  }, [color, activity.type]);
   
-  // Process photos from activity with improved parsing
+  // Process photos from activity
   useEffect(() => {
-    if (!activity.photos) {
-      setImages([]);
-      return;
-    }
-    
-    try {
-      // If it's already a string array, use it directly
-      if (Array.isArray(activity.photos)) {
-        setImages(activity.photos.filter(p => typeof p === 'string' && p.trim() !== ''));
-        return;
-      }
-      
-      // If it's a string, process it
+    if (activity.photos) {
+      // If it's a string, try to parse it as JSON
       if (typeof activity.photos === 'string') {
-        // If it looks like a URL, use it directly
-        if (activity.photos.match(/^https?:\/\//i)) {
-          setImages([activity.photos]);
-          return;
-        }
-        
-            // Try to parse as JSON
         try {
+          // First check if it looks like a URL
+          if (activity.photos.match(/https?:\/\//)) {
+            setImages([activity.photos]);
+          } else {
+            // Try to parse as JSON
             const parsed = JSON.parse(activity.photos);
             if (Array.isArray(parsed)) {
-            setImages(parsed.filter(p => typeof p === 'string' && p.trim() !== ''));
+              setImages(parsed);
             } else if (typeof parsed === 'string') {
               setImages([parsed]);
-          } else {
-            console.warn('Unexpected JSON format for photos in activity:', activity.id);
-            setImages([]);
             }
-          } catch (e) {
+          }
+        } catch (e) {
           // If not valid JSON, treat as a single URL string
-            setImages([activity.photos]);
+          setImages([activity.photos]);
         }
-      } else {
-        // Not a string or array, set empty
-        setImages([]);
       }
-    } catch (e) {
-      console.error("Error processing photos for activity", activity.id, e);
-      setImages([]);
     }
-  }, [activity.photos, activity.id]);
-  
+  }, [activity.photos]);
+
   // Wire up gallery navigation to window global for Popup connection
   useEffect(() => {
-    if (typeof window !== 'undefined' && activity.id) {
+    if (typeof window !== 'undefined') {
       // Register photo navigation handlers
       const prevHandler = (id: string) => {
         if (id === activity.id && images.length > 1) {
@@ -1185,12 +1087,9 @@ function SimpleMarker({ activity }: { activity: Activity }) {
       
       // Cleanup
       return () => {
-        if (window.showGallery_ && activity.id) {
-          delete window.showGallery_[activity.id];
-        }
+        delete window.showGallery_[activity.id];
       };
     }
-    return undefined;
   }, [activity.id, images.length]);
 
   // Only import Leaflet on client-side
@@ -1201,7 +1100,7 @@ function SimpleMarker({ activity }: { activity: Activity }) {
     activity.originalLat !== undefined ? activity.originalLat : activity.lat,
     activity.originalLng !== undefined ? activity.originalLng : activity.lng
   ];
-  
+
   // Function to handle marker click
   const handleMarkerClick = () => {
     console.log("Marker clicked:", activity.title);
@@ -1219,13 +1118,13 @@ function SimpleMarker({ activity }: { activity: Activity }) {
   const renderPopup = () => {
     return `
       <div class="activity-popup" data-id="${activity.id}">
-        <h3 class="text-md font-semibold mb-1" style="color: ${color}; text-shadow: 0 0 5px ${color}40;">${activity.title || ''}</h3>
+        <h3 class="text-md font-semibold mb-1" style="color: ${color}; text-shadow: 0 0 5px ${color}40;">${activity.title}</h3>
         
-        ${activity.description && typeof activity.description === 'string' ? `
+        ${activity.description ? `
           <p class="text-sm mb-2 text-gray-300">${activity.description}</p>
         ` : ''}
         
-        ${activity.country || activity.address ? `
+        ${activity.country || activity.adress ? `
           <div class="text-xs text-gray-400 mb-1">
             <span class="inline-block w-4 h-4 mr-1 align-text-bottom">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1233,11 +1132,11 @@ function SimpleMarker({ activity }: { activity: Activity }) {
                 <circle cx="12" cy="10" r="3"></circle>
               </svg>
             </span>
-            ${(activity.address || activity.country || '').toString()}
+            ${activity.adress || activity.country}
           </div>
         ` : ''}
         
-        ${activity.responsible && typeof activity.responsible === 'string' ? `
+        ${activity.responsible ? `
           <div class="text-xs text-gray-400 mb-2">
             <span class="inline-block w-4 h-4 mr-1 align-text-bottom">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1249,13 +1148,74 @@ function SimpleMarker({ activity }: { activity: Activity }) {
           </div>
         ` : ''}
         
-        <button 
-          class="mt-2 text-xs inline-flex items-center px-2 py-1 rounded-md"
-          style="background: rgba(6, 182, 212, 0.2); border: 1px solid ${color}; color: ${color}; cursor: pointer;"
-          onclick="window.showActivityOverlay && window.showActivityOverlay('view', '${activity.id}')"
-        >
-          View Details
-        </button>
+        ${images.length > 0 ? `
+          <div class="relative mt-2 bg-gray-900 rounded overflow-hidden" style="height: 140px;">
+            <img 
+              src="${images[activeImageIndex]}" 
+              alt="${activity.title}" 
+              class="w-full h-full object-cover"
+              style="filter: saturate(1.2) contrast(1.1);"
+            />
+            
+            ${images.length > 1 ? `
+              <div class="absolute inset-x-0 bottom-0 flex justify-between items-center p-1 bg-gradient-to-t from-black/70 to-transparent">
+                <button 
+                  onclick="window.prevActivityImage('${activity.id}')" 
+                  class="w-6 h-6 flex items-center justify-center bg-black/50 rounded-full text-white"
+                  style="backdrop-filter: blur(2px);"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                </button>
+                <span class="text-xs text-white">
+                  ${activeImageIndex + 1}/${images.length}
+                </span>
+                <button 
+                  onclick="window.nextActivityImage('${activity.id}')" 
+                  class="w-6 h-6 flex items-center justify-center bg-black/50 rounded-full text-white"
+                  style="backdrop-filter: blur(2px);"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+            ` : ''}
+            
+            <button 
+              onclick="window.showGallery_['${activity.id}']();" 
+              class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center bg-black/50 rounded-full text-white"
+              style="backdrop-filter: blur(2px);"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+            </button>
+          </div>
+        ` : ''}
+        
+        ${activity.hyperlink ? `
+          <div class="mt-2">
+            <a 
+              href="${activity.hyperlink}" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              class="text-xs inline-flex items-center px-2 py-1 rounded-md"
+              style="background: rgba(6, 247, 247, 0.1); border: 1px solid ${color}; color: ${color}; box-shadow: 0 0 5px ${color}40;"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 mr-1">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+              Learn More
+            </a>
+          </div>
+        ` : ''}
       </div>
     `;
   };
@@ -1266,8 +1226,8 @@ function SimpleMarker({ activity }: { activity: Activity }) {
   
   return (
     <>
-      <Marker 
-        position={[activity.lat, activity.lng]} 
+      <Marker
+        position={[activity.lat, activity.lng]}
         icon={markerIcon}
         eventHandlers={{
           click: handleMarkerClick
@@ -1285,548 +1245,614 @@ function SimpleMarker({ activity }: { activity: Activity }) {
       
       {/* Photo gallery modal */}
       {showGallery && images.length > 0 && (
-      <PhotoGallery 
-        photos={images} 
-        isOpen={showGallery} 
-        onClose={() => setShowGallery(false)} 
-        activityTitle={activity.title}
-        activityColor={color}
-      />
+        <PhotoGallery
+          photos={images}
+          isOpen={showGallery}
+          onClose={() => setShowGallery(false)}
+          activityTitle={activity.title}
+          activityColor={color}
+        />
       )}
     </>
   );
 }
 
-// Map Legend Component
-function MapLegend({ isMobile }: { isMobile: boolean }) {
-  const [expanded, setExpanded] = useState(!isMobile);
+function MapOverlays({ map }: { map: L.Map }) {
+  const [gridImageLoaded, setGridImageLoaded] = useState(true);
+  const [scanlineImageLoaded, setScanlineImageLoaded] = useState(true);
+  const [particlesActive, setParticlesActive] = useState(true);
+  
+  useEffect(() => {
+    // Check if grid overlay image exists
+    const gridImg = new Image();
+    gridImg.onload = () => setGridImageLoaded(true);
+    gridImg.onerror = () => setGridImageLoaded(false);
+    gridImg.src = '/grid-overlay.png';
+    
+    // Check if scanline image exists
+    const scanlineImg = new Image();
+    scanlineImg.onload = () => setScanlineImageLoaded(true);
+    scanlineImg.onerror = () => setScanlineImageLoaded(false);
+    scanlineImg.src = '/scanline.gif';
+  }, []);
   
   return (
-    <div 
-      className={`absolute ${isMobile ? 'bottom-20 left-4' : 'bottom-8 left-8'} z-[2000] transition-all duration-300`}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.5 }}
-        className={`bg-black/70 backdrop-blur-md rounded-lg border border-slate-700/50 ${expanded ? 'p-4' : 'p-2'} shadow-lg shadow-black/30`}
-        style={{
-          boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)',
-        }}
-      >
-        <div className="flex items-center justify-between mb-2">
-          {expanded && (
-            <h3 className="text-sm font-medium text-white/90 flex items-center gap-2">
-              <Globe className="h-4 w-4 text-cyan-400" />
-              Activity Types
-            </h3>
-          )}
-          <button 
-            onClick={() => setExpanded(!expanded)}
-            className={`w-6 h-6 rounded-full flex items-center justify-center bg-black/50 text-white/80 hover:bg-black/70 transition-colors ${expanded ? 'ml-auto' : ''}`}
-          >
-            {expanded ? <X className="h-3 w-3" /> : <Info className="h-3 w-3" />}
-          </button>
-        </div>
-        
-        {expanded && (
-          <div className="space-y-2 mt-2">
-            {activityTypes.map((type) => (
-              <div key={type.value} className="flex items-center gap-2">
+    <>
+      {/* Partículas animadas */}
+      {particlesActive && (
+        <div className="absolute inset-0 pointer-events-none overflow-visible particle-container" style={{ zIndex: 9999 }}>
+          {/* Ambient particles - background */}
+          <div 
+            className="absolute inset-0 z-[1997] overflow-visible" 
+            style={{ 
+              background: `
+                radial-gradient(circle at 20% 30%, rgba(6, 247, 247, 0.03) 0%, transparent 8%),
+                radial-gradient(circle at 50% 70%, rgba(148, 82, 245, 0.03) 0%, transparent 8%),
+                radial-gradient(circle at 80% 20%, rgba(255, 42, 109, 0.03) 0%, transparent 8%),
+                radial-gradient(circle at 15% 80%, rgba(10, 252, 10, 0.03) 0%, transparent 8%),
+                radial-gradient(circle at 85% 60%, rgba(5, 217, 254, 0.03) 0%, transparent 8%)
+              `,
+              animation: "pulse 8s infinite alternate" 
+            }}
+          />
+          
+          {/* Animated floating particles */}
+          <div className="particle-overlay absolute inset-0 z-[9998]">
+            {Array.from({ length: 100 }).map((_, i) => {
+              const size = Math.random() * 4 + 2;
+              const top = Math.random() * 100;
+              const left = Math.random() * 100;
+              
+              // Randomize particle colors
+              const colors = ['rgba(6, 247, 247, 0.8)', 'rgba(148, 82, 245, 0.8)', 'rgba(255, 42, 109, 0.8)', 'rgba(10, 252, 10, 0.8)', 'rgba(5, 217, 254, 0.8)'];
+              const color = colors[Math.floor(Math.random() * colors.length)];
+              
+              // Randomize animation properties
+              const animType = Math.random() > 0.5 ? 'float-particle' : 'float-particle-alt';
+              const duration = 10 + Math.random() * 10;
+              const delay = Math.random() * 5;
+              const pulse = Math.random() > 0.7;
+              
+              return (
                 <div 
-                  className="w-4 h-4 rounded-full" 
-                  style={{ 
-                    backgroundColor: 'rgba(0,0,0,0.6)',
-                    border: `1.5px solid ${type.color}`,
-                    boxShadow: `0 0 6px ${type.color}`
+                  key={i}
+                  className="absolute rounded-full map-particle"
+                  style={{
+                    width: `${size}px`,
+                    height: `${size}px`,
+                    top: `${top}%`,
+                    left: `${left}%`,
+                    backgroundColor: color,
+                    boxShadow: `0 0 ${size * 2}px ${color}, 0 0 ${size}px ${color}`,
+                    opacity: 0.4 + Math.random() * 0.4,
+                    zIndex: 99999,
+                    animation: `
+                      ${animType} ${duration}s infinite ease-in-out ${delay}s
+                      ${pulse ? `, particle-pulse ${3 + Math.random() * 2}s infinite ${Math.random() * 2}s` : ''}
+                    `
                   }}
-                ></div>
-                <span className="text-xs text-white/80">{type.label}</span>
-              </div>
-            ))}
+                />
+              );
+            })}
           </div>
-        )}
-      </motion.div>
-    </div>
-  );
+        </div>
+      )}
+      
+      {/* Grid overlay with improved styling, animation and fallback */}
+      {gridImageLoaded ? (
+        <div 
+          className="absolute inset-0 pointer-events-none z-[1999] grid-effect" 
+          style={{
+            backgroundImage: "url('/grid-overlay.png')",
+            backgroundSize: "cover",
+            backgroundRepeat: "repeat",
+            mixBlendMode: "overlay",
+            opacity: 0.5
+          }}
+        />
+      ) : (
+        <div 
+          className="absolute inset-0 pointer-events-none z-[1999] grid-effect" 
+          style={{
+            background: `repeating-linear-gradient(
+              0deg,
+              transparent,
+              transparent 40px,
+              rgba(255, 255, 255, 0.02) 40px,
+              rgba(255, 255, 255, 0.02) 41px
+            ),
+            repeating-linear-gradient(
+              90deg,
+              transparent,
+              transparent 40px,
+              rgba(255, 255, 255, 0.02) 40px,
+              rgba(255, 255, 255, 0.02) 41px
+            )`,
+            mixBlendMode: "overlay"
+          }}
+        />
+      )}
+      
+      {/* Scanline effect with improved styling, animation and fallback */}
+      {scanlineImageLoaded ? (
+        <div 
+          className="absolute inset-0 pointer-events-none z-[1998] scanline-effect" 
+          style={{
+            backgroundImage: "url('/scanline.gif')",
+            backgroundSize: "cover",
+            backgroundRepeat: "repeat",
+            mixBlendMode: "overlay",
+            opacity: 0.03
+          }}
+        />
+      ) : (
+        <div 
+          className="absolute inset-0 pointer-events-none z-[1998] scanline-effect" 
+          style={{
+            background: `repeating-linear-gradient(
+              180deg,
+              transparent,
+              transparent 3px,
+              rgba(255, 255, 255, 0.015) 3px,
+              rgba(255, 255, 255, 0.015) 4px
+            )`,
+            mixBlendMode: "overlay"
+          }}
+        />
+      )}
+      
+      <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none z-[399] bg-gradient-to-b from-black/40 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none z-[399] bg-gradient-to-t from-black/40 to-transparent" />
+      <div className="absolute top-0 bottom-0 left-0 w-32 pointer-events-none z-[399] bg-gradient-to-r from-black/40 to-transparent" />
+      <div className="absolute top-0 bottom-0 right-0 w-32 pointer-events-none z-[399] bg-gradient-to-l from-black/40 to-transparent" />
+    </>
+  )
 }
 
-// Enhanced particle effects component
-function EnhancedParticleEffects() {
-  const isMobile = useMediaQuery("(max-width: 768px)");
-  const { shouldReduceAnimations } = useEffects();
+function LoadingScreen() {
+  return (
+    <div className="w-full h-screen bg-gradient-to-b from-black via-black/90 to-black/80 flex flex-col items-center justify-center">
+      <div className="relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-full blur-2xl"></div>
+        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-cyan-500 to-purple-600 animate-pulse flex items-center justify-center relative">
+          <Globe className="h-8 w-8 text-white animate-spin-slow" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ErrorScreen({ error }: { error: string }) {
+  return (
+    <div className="w-full h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+      <div className="p-6 bg-gray-800 rounded-lg border border-red-500/50 shadow-lg shadow-red-500/20 max-w-md">
+        <h2 className="text-xl font-bold text-red-500 mb-2">Error Loading Map</h2>
+        <p className="text-gray-300">{error}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-500 rounded-md transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Component to ensure Leaflet is loaded before rendering children
+function LeafletLoader({ children }: { children: React.ReactNode }) {
+  const { isLeafletLoaded, error } = useLeaflet();
   
-  // Reduce particle count on mobile or if animations should be reduced
-  const particleCount = useMemo(() => {
-    if (shouldReduceAnimations) return 30;
-    return isMobile ? 50 : 100;
-  }, [isMobile, shouldReduceAnimations]);
-  
-  // Don't render particles in reduced animations mode
-  if (shouldReduceAnimations) {
-    console.log("Skipping particles due to reduced animations setting");
-    return null;
+  if (error) {
+    return <ErrorScreen error={error} />;
   }
   
-  console.log("Rendering EnhancedParticleEffects with", particleCount, "particles");
+  if (!isLeafletLoaded) {
+    return <LoadingScreen />;
+  }
+  
+  return <>{children}</>;
+}
+
+// This function converts our internal Activity type to BaseActivity
+// for components that require the original type
+const convertToBaseActivity = (activity: Activity): BaseActivity => {
+  let photos: string[] = [];
+  
+  // Handle the photos field safely
+  if (activity.photos) {
+    // If it's already a string and looks like a URL, use it directly
+    if (typeof activity.photos === 'string') {
+      if (activity.photos.startsWith('http://') || activity.photos.startsWith('https://')) {
+        // It's a single URL, wrap it in an array
+        photos = [activity.photos];
+      } else {
+        // Only try to parse if it doesn't look like a URL
+        try {
+          const photoUrls = JSON.parse(activity.photos);
+          if (Array.isArray(photoUrls)) {
+            photos = photoUrls;
+          } else if (typeof photoUrls === 'string') {
+            photos = [photoUrls];
+          }
+        } catch (e) {
+          // If parsing fails, treat as a single string
+          photos = [activity.photos];
+          console.error("Not a URL or valid JSON, using as plain string:", activity.photos);
+        }
+      }
+    }
+  }
+  
+  return {
+    id: activity.id,
+    lat: activity.lat,
+    lng: activity.lng,
+    country: activity.country,
+    adress: activity.adress,
+    type: activity.type,
+    title: activity.title,
+    responsible: activity.responsible,
+    description: activity.description,
+    photos
+  };
+};
+
+// Map Legend component
+function MapLegend() {
+  const legendItems = [
+    { type: 'reforestation', color: '#10b981', label: 'Reforestation' },
+    { type: 'clean-up', color: '#0ea5e9', label: 'Clean-up' },
+    { type: 'education', color: '#f59e0b', label: 'Education' },
+    { type: 'conservation', color: '#10b981', label: 'Conservation' },
+    { type: 'renewable', color: '#06b6d4', label: 'Renewable Energy' },
+  ];
   
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-visible particle-container" style={{ zIndex: 9999 }}>
-      {/* Ambient particles - background */}
-      <div 
-        className="absolute inset-0 z-[1997] overflow-visible" 
-        style={{ 
-          background: `
-            radial-gradient(circle at 20% 30%, rgba(6, 247, 247, 0.03) 0%, transparent 8%),
-            radial-gradient(circle at 50% 70%, rgba(148, 82, 245, 0.03) 0%, transparent 8%),
-            radial-gradient(circle at 80% 20%, rgba(255, 42, 109, 0.03) 0%, transparent 8%),
-            radial-gradient(circle at 15% 80%, rgba(10, 252, 10, 0.03) 0%, transparent 8%),
-            radial-gradient(circle at 85% 60%, rgba(5, 217, 254, 0.03) 0%, transparent 8%)
-          `,
-          animation: "pulse 8s infinite alternate" 
-        }}
-      />
-      
-      {/* Add CSS styles for the particles */}
-      <style jsx global>{`
-        @keyframes float-particle {
-          0%, 100% { transform: translateY(0) translateX(0); }
-          25% { transform: translateY(-20px) translateX(10px); }
-          50% { transform: translateY(5px) translateX(-15px); }
-          75% { transform: translateY(15px) translateX(5px); }
-        }
-        
-        @keyframes float-particle-alt {
-          0%, 100% { transform: translateY(0) translateX(0); }
-          33% { transform: translateY(15px) translateX(-10px); }
-          66% { transform: translateY(-10px) translateX(15px); }
-        }
-        
-        @keyframes particle-pulse {
-          0%, 100% { opacity: 0.3; transform: scale(0.8); }
-          50% { opacity: 0.7; transform: scale(1.2); }
-        }
-        
-        @keyframes pulse {
-          0% { opacity: 0.7; }
-          50% { opacity: 1; }
-          100% { opacity: 0.7; }
-        }
-      `}</style>
-      
-      {/* Animated floating particles with improved animation */}
-      <div className="particle-overlay absolute inset-0 z-[9998]">
-        {Array.from({ length: particleCount }).map((_, i) => {
-          const size = Math.random() * 4 + 2;
-          const top = Math.random() * 100;
-          const left = Math.random() * 100;
-          
-          // Randomize particle colors with improved cyberpunk palette
-          const colors = [
-            'rgba(6, 247, 247, 0.8)',    // Cyan
-            'rgba(148, 82, 245, 0.8)',   // Purple
-            'rgba(255, 42, 109, 0.8)',   // Pink
-            'rgba(10, 252, 10, 0.8)',    // Green
-            'rgba(5, 217, 254, 0.8)',    // Blue
-            'rgba(255, 231, 76, 0.8)'    // Yellow
-          ];
-          const color = colors[Math.floor(Math.random() * colors.length)];
-          
-          // Randomize animation properties with improved values
-          const animType = Math.random() > 0.5 ? 'float-particle' : 'float-particle-alt';
-          const duration = 5 + Math.random() * 15; // More variation
-          const delay = Math.random() * 10;
-          const pulse = Math.random() > 0.3; // More particles will pulse
-          
-          return (
-            <div 
-              key={i}
-              className="absolute rounded-full map-particle"
-              style={{
-                width: `${size}px`,
-                height: `${size}px`,
-                top: `${top}%`,
-                left: `${left}%`,
-                backgroundColor: color,
-                boxShadow: `0 0 ${size * 2}px ${color}, 0 0 ${size}px ${color}`,
-                opacity: 0.4 + Math.random() * 0.4,
-                zIndex: 9998,
-                animation: `
-                  ${animType} ${duration}s infinite ease-in-out ${delay}s
-                  ${pulse ? `, particle-pulse ${2 + Math.random() * 3}s infinite ${Math.random() * 2}s` : ''}
-                `
-              }}
-            />
-          );
-        })}
+    <div className="map-legend">
+      <div className="mb-2 text-xs uppercase text-cyan-500 font-semibold">Activity Types</div>
+      {legendItems.map(item => (
+        <div key={item.type} className="map-legend-item">
+          <div className="map-legend-color" style={{ backgroundColor: item.color, boxShadow: `0 0 5px ${item.color}` }}></div>
+          <span>{item.label}</span>
+        </div>
+      ))}
+      <div className="mt-2 pt-2 border-t border-cyan-900/50 text-xs text-gray-400">
+        <div className="flex items-center">
+          <div className="w-3 h-3 mr-2 rounded-full bg-gradient-to-r from-red-500 to-pink-500"></div>
+          <span>High activity density</span>
+        </div>
+        <div className="flex items-center mt-1">
+          <div className="w-3 h-3 mr-2 rounded-full bg-gradient-to-r from-yellow-500 to-orange-500"></div>
+          <span>Medium activity density</span>
+        </div>
+        <div className="flex items-center mt-1">
+          <div className="w-3 h-3 mr-2 rounded-full bg-gradient-to-r from-green-500 to-cyan-500"></div>
+          <span>Low activity density</span>
+        </div>
       </div>
     </div>
   );
 }
 
-// Create a custom marker cluster component that uses Leaflet's built-in clustering
-function CustomMarkerCluster({ activities }: { activities: Activity[] }) {
-  const map = useMap();
-  const { shouldReduceAnimations } = useEffects();
-  
-  useEffect(() => {
-    if (!map || !L) return;
-    
-    // We'll use a safer approach with type assertions to avoid TypeScript errors
-    let markerCluster: any = null;
-    
-    // First ensure the marker cluster plugin is loaded by checking if the function exists
-    // @ts-ignore - We know this might exist at runtime when the plugin is loaded
-    if (L.markerClusterGroup) {
-      try {
-        // Initialize a marker cluster group directly using Leaflet with type assertion
-        // @ts-ignore - Using type assertion to bypass TypeScript checking
-        markerCluster = (L as any).markerClusterGroup({
-          showCoverageOnHover: false,
-          zoomToBoundsOnClick: true,
-          spiderfyOnMaxZoom: true,
-          disableClusteringAtZoom: 5,
-          maxClusterRadius: 40,
-          animate: !shouldReduceAnimations,
-          chunkedLoading: true,
-          iconCreateFunction: (cluster: any) => {
-            // Safely handle possible null L
-            if (!L) return null;
-            
-            const count = cluster.getChildCount();
-            let size = 'small';
-            
-            if (count > 20) {
-              size = 'large';
-            } else if (count > 10) {
-              size = 'medium';
-            }
-            
-            // Generate random colors for markers in cluster
-            const colors = ['#05d9fe', '#ff00ea', '#ffe600', '#00ff85', '#ff007a'];
-            const randomColor = colors[Math.floor(Math.random() * colors.length)];
-            
-            // Create custom HTML for cluster
-            const html = `
-              <div style="
-                width: 40px; 
-                height: 40px; 
-                border-radius: 50%; 
-                display: flex; 
-                align-items: center; 
-                justify-content: center;
-                background: rgba(5, 15, 25, 0.7);
-                color: white;
-                border: 1.5px solid ${randomColor};
-                box-shadow: 0 0 10px ${randomColor}50;
-                backdrop-filter: blur(4px);
-                font-weight: bold;
-                font-size: 14px;
-              ">
-                <span>${count}</span>
-                <div style="
-                  position: absolute;
-                  inset: 0;
-                  border-radius: 50%;
-                  background: radial-gradient(circle, ${randomColor}20 0%, transparent 70%);
-                "></div>
-              </div>
-            `;
-            
-            return L.divIcon({
-              html,
-              className: `marker-cluster marker-cluster-${size}`,
-              iconSize: L.point(40, 40)
-            });
-          }
-        });
-        
-        // Add markers to the cluster group
-        activities.forEach(activity => {
-          if (!L) return;
-          
-          const markerIcon = createMarkerIcon(getActivityColor(activity.type), activity.type);
-          if (!markerIcon) return;
-          
-          const marker = L.marker([activity.lat, activity.lng], { icon: markerIcon });
-          
-          // Handle marker click
-          marker.on('click', () => {
-            // Use the overlay context to show activity details when marker is clicked
-            if (window && window.showActivityOverlay && activity.id) {
-              window.showActivityOverlay("view", String(activity.id));
-            }
-          });
-          
-          // Create popup content for the marker
-          const popupContent = document.createElement('div');
-          popupContent.className = 'custom-popup-content';
-          popupContent.innerHTML = `
-            <h3 class="text-md font-semibold mb-1" style="color: ${getActivityColor(activity.type)}; text-shadow: 0 0 5px ${getActivityColor(activity.type)}40;">${activity.title || ''}</h3>
-            ${activity.description && typeof activity.description === 'string' ? 
-              `<p class="text-sm mb-2 text-gray-300">${activity.description}</p>` : 
-              ''}
-            <button 
-              class="mt-2 text-xs inline-flex items-center px-2 py-1 rounded-md"
-              style="background: rgba(6, 182, 212, 0.2); border: 1px solid ${getActivityColor(activity.type)}; color: ${getActivityColor(activity.type)}; cursor: pointer;"
-              onclick="window.showActivityOverlay && window.showActivityOverlay('view', '${activity.id}')"
-            >
-              View Details
-            </button>
-          `;
-          
-          marker.bindPopup(popupContent);
-          markerCluster.addLayer(marker);
-        });
-        
-        // Add the marker cluster group to the map
-        map.addLayer(markerCluster);
-      } catch (error) {
-        console.error("Error creating marker clusters:", error);
-        // Fall back to regular markers
-        createRegularMarkers();
-      }
-    } else {
-      console.warn('Leaflet MarkerClusterGroup not available, falling back to regular markers');
-      createRegularMarkers();
-    }
-    
-    // Function to create regular markers as fallback
-    function createRegularMarkers() {
-      // Fallback: Add individual markers without clustering
-      activities.forEach(activity => {
-        if (!L) return;
-        
-        const markerIcon = createMarkerIcon(getActivityColor(activity.type), activity.type);
-        if (!markerIcon) return;
-        
-        const marker = L.marker([activity.lat, activity.lng], { icon: markerIcon });
-        
-        // Handle marker click
-        marker.on('click', () => {
-          if (window && window.showActivityOverlay && activity.id) {
-            window.showActivityOverlay("view", String(activity.id));
-          }
-        });
-        
-        marker.addTo(map);
-      });
-    }
-    
-    // Cleanup on unmount
-    return () => {
-      if (map && markerCluster) {
-        try {
-          map.removeLayer(markerCluster);
-        } catch (e) {
-          console.warn("Error removing marker cluster:", e);
-        }
-      }
-    };
-  }, [map, activities, shouldReduceAnimations]);
-  
-  // This component doesn't render anything directly
-  return null;
-}
-
-// Map wrapper with our custom clustering approach
+// Map wrapper component using React-Leaflet
 function MapWrapper({ activities, stadiaApiKey }: { 
   activities: Activity[],
   stadiaApiKey?: string | null 
 }) {
   const { resolvedTheme } = useTheme();
-  const mapRef = useRef<LeafletNamespace.Map | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const isMountedRef = useRef(false);
-  const mapInitializedRef = useRef(false);
-  const markersRef = useRef<LeafletNamespace.Marker[]>([]);
-  const particleEffectRef = useRef<any>(null);
-  
-  // Mobile detection
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const mapRef = useRef<any>(null);
+  const [initialized, setInitialized] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showLegend, setShowLegend] = useState(true);
   
-  // Apply touch optimizations
-  useTouchOptimizations(mapRef.current, isMobile);
-
-  const [mapState, setMapState] = useState({
-    center: [0, 0],
-    zoom: isMobile ? 1.8 : 2.5,
-  });
+  // Create data for heatmap
+  const heatmapData = useMemo(() => {
+    if (!activities || activities.length === 0) return [];
+    
+    return activities.map(activity => {
+      // Intensity based on type - adjust as needed
+      let intensity = 0.5;
+      switch (activity.type) {
+        case 'reforestation':
+          intensity = 0.7;
+          break;
+        case 'clean-up':
+          intensity = 0.6;
+          break;
+        case 'education':
+          intensity = 0.4;
+          break;
+        default:
+          intensity = 0.5;
+      }
+      
+      return [
+        activity.lat,
+        activity.lng,
+        intensity
+      ] as [number, number, number];
+    });
+  }, [activities]);
   
-  // Effect to initialize animation
-  useEffect(() => {
-    if (!mapRef.current || !isMountedRef.current) return;
-    
-    // Skip if map is already initialized
-    if (mapInitializedRef.current) return;
-    
-    mapInitializedRef.current = true;
-    
-    // ... rest of existing code ...
-  }, [mapRef.current, isMountedRef.current, activities]);
+  // Create MarkerClusterGroup ref - but we won't actually use ref forwarding
+  const [clusterInstance, setClusterInstance] = useState<any>(null);
   
-  // ... rest of existing code ...
-
+  // Create panes when map is ready
   const MapInitializer = () => {
+    // Since we're importing useMap directly, we can use it directly in this component
+    // that's rendered inside MapContainer
+    try {
       const map = useMap();
       
-    // Store map in refs
-    mapRef.current = map;
-    
-    // Set map options better suited for touch
-    if (isMobile) {
-      // Optimize pan/zoom settings for mobile
-      map.options.inertiaDeceleration = 2000; // Slower deceleration for smoother pan
-      map.options.inertiaMaxSpeed = 1000; // Limit max speed for better control
-      map.options.easeLinearity = 0.3; // More linear easing for more predictable movement
-      map.options.wheelDebounceTime = 100; // Debounce wheel events for smoother experience
-      map.options.bounceAtZoomLimits = false; // Disable bounce at zoom limits
-    }
-    
-    useEffect(() => {
-      if (!map) return;
-      
-      isMountedRef.current = true;
-      
-      // Configure map controller with isMobile flag
-      const cleanup = configureMapController(map, isMobile);
-      
-      return () => {
-        cleanup?.();
-        isMountedRef.current = false;
-      };
+      // Set up map on first render
+      useEffect(() => {
+        if (!map) return;
+        
+        // Create custom panes with proper z-indices for layering
+        if (!map.getPane('labelsPane')) {
+          map.createPane('labelsPane');
+          const pane = map.getPane('labelsPane');
+          if (pane) {
+            pane.style.zIndex = '800';
+            pane.style.pointerEvents = 'none';
+            pane.className += ' leaflet-labels-pane';
+          }
+        }
+        
+        if (!map.getPane('heatmapPane')) {
+          map.createPane('heatmapPane');
+          const pane = map.getPane('heatmapPane');
+          if (pane) {
+            pane.style.zIndex = '600';
+            pane.style.pointerEvents = 'none';
+          }
+        }
+        
+        if (!map.getPane('superMarkerPane')) {
+          map.createPane('superMarkerPane');
+          const pane = map.getPane('superMarkerPane');
+          if (pane) {
+            pane.style.zIndex = '9000';
+            pane.style.pointerEvents = 'auto';
+          }
+        }
+        
+        // Ensure proper marker pane z-index
+        const markerPane = map.getPane('markerPane');
+        if (markerPane) {
+          markerPane.style.zIndex = '9000';
+          markerPane.style.pointerEvents = 'auto';
+        }
+        
+        // Configure other panes
+        const popupPane = map.getPane('popupPane');
+        if (popupPane) {
+          popupPane.style.zIndex = '9800';
+        }
+        
+        // Store map reference
+        mapRef.current = map;
+        setInitialized(true);
       }, [map]);
-    
-    // ... rest of existing code ...
       
       return null;
+    } catch (e) {
+      // This should only happen during SSR, which we're preventing with dynamic imports
+      console.error("Error in MapInitializer:", e);
+      return null;
+    }
   };
   
-  // Add mobile UI feedback for interaction
-  const TouchFeedbackOverlay = () => {
-    if (!isMobile) return null;
+  // Process activities to spread overlapping markers
+  const processedActivities = useMemo(() => {
+    if (!activities || activities.length === 0) return [];
     
+    // Create a map to group activities by coordinates
+    const locationGroups: { [key: string]: Activity[] } = {};
+    
+    // Group activities by their coordinates
+    activities.forEach(activity => {
+      const locationKey = `${activity.lat.toFixed(6)},${activity.lng.toFixed(6)}`;
+      if (!locationGroups[locationKey]) {
+        locationGroups[locationKey] = [];
+      }
+      locationGroups[locationKey].push(activity);
+    });
+    
+    // Process groups that have more than one activity at the same coordinates
+    const adjustedActivities = activities.map(activity => {
+      const locationKey = `${activity.lat.toFixed(6)},${activity.lng.toFixed(6)}`;
+      const group = locationGroups[locationKey];
+      
+      // If this is a group with overlapping markers
+      if (group && group.length > 1) {
+        // Find this activity's index in the group
+        const activityIndex = group.findIndex(a => a.id === activity.id);
+        
+        // Only adjust position if we found the activity
+        if (activityIndex >= 0) {
+          // Offset distance for spreading markers
+          const offsetDistance = 0.001;
+          
+          // Calculate angle for this marker in the circle
+          const angle = (2 * Math.PI * activityIndex) / group.length;
+          
+          // Calculate new position
+          const newActivity = { ...activity };
+          newActivity.lat = activity.lat + offsetDistance * Math.sin(angle);
+          newActivity.lng = activity.lng + offsetDistance * Math.cos(angle);
+          
+          // Store original coordinates for proper popup positioning
+          newActivity.originalLat = activity.lat;
+          newActivity.originalLng = activity.lng;
+          
+          return newActivity;
+        }
+      }
+      
+      // If no adjustment is needed, return the original activity
+      return activity;
+    });
+    
+    return adjustedActivities;
+  }, [activities]);
+  
+  // Main map control buttons
+  const MapControls = () => {
     return (
-      <div className="absolute bottom-4 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <div className="bg-black/60 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm">
-          <span>Double tap to zoom • Long press for info</span>
-        </div>
+      <div className="absolute top-20 right-4 z-[990] flex flex-col gap-2">
+        <button
+          onClick={() => setShowHeatmap(prev => !prev)}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center backdrop-blur-md ${
+            showHeatmap 
+              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/50' 
+              : 'bg-gray-900/60 text-gray-400 border border-gray-700/50'
+          }`}
+          title={showHeatmap ? "Hide heatmap" : "Show heatmap"}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 2a4.2 4.2 0 0 0 4 4 4.2 4.2 0 0 1 4 4 4.2 4.2 0 0 1-4 4 4.2 4.2 0 0 0-4 4 4.2 4.2 0 0 1-4-4 4.2 4.2 0 0 0-4-4 4.2 4.2 0 0 1 4-4 4.2 4.2 0 0 0 4-4" />
+          </svg>
+        </button>
+        <button
+          onClick={() => setShowLegend(prev => !prev)}
+          className={`w-10 h-10 rounded-lg flex items-center justify-center backdrop-blur-md ${
+            showLegend 
+              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/50' 
+              : 'bg-gray-900/60 text-gray-400 border border-gray-700/50'
+          }`}
+          title={showLegend ? "Hide legend" : "Show legend"}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="6" height="6" x="4" y="4" rx="1" />
+            <rect width="6" height="6" x="14" y="4" rx="1" />
+            <rect width="6" height="6" x="4" y="14" rx="1" />
+            <rect width="6" height="6" x="14" y="14" rx="1" />
+          </svg>
+        </button>
       </div>
     );
   };
   
   return (
-    <div className="relative h-full w-full bg-gray-100 dark:bg-gray-900" ref={containerRef}>
-      <style jsx global>{`
-        /* ... existing styles ... */
-        
-        /* Enhanced mobile styles */
-        @media (max-width: 768px) {
-          .leaflet-touch .leaflet-bar a {
-            width: 36px !important;
-            height: 36px !important;
-            line-height: 36px !important;
-          }
-          
-          .leaflet-touch .leaflet-control-zoom {
-            position: fixed !important;
-            bottom: 16px !important;
-            right: 16px !important;
-            top: auto !important;
-            z-index: 1000 !important;
-          }
-          
-          /* Improve contrast for controls */
-          .leaflet-touch .leaflet-bar {
-            background: rgba(0, 0, 0, 0.6) !important;
-            backdrop-filter: blur(4px);
-            padding: 4px;
-            border-radius: 8px;
-          }
-          
-          .leaflet-touch .leaflet-bar a {
-            border-radius: 4px !important;
-            margin: 2px 0;
-          }
-          
-          .leaflet-touch .leaflet-bar a:first-child {
-            border-radius: 4px !important;
-          }
-          
-          .leaflet-touch .leaflet-bar a:last-child {
-            border-radius: 4px !important;
-          }
-        }
-      `}</style>
-
+    <div className="w-full h-full relative">
       <MapContainer
-        className="h-full w-full"
-        preferCanvas={true}
+        center={[0, 0]}
+        zoom={isMobile ? 1.8 : 2.5}
+        style={{ height: '100%', width: '100%' }}
         zoomControl={false}
-        // Use state for zoom and center
-        zoom={mapState.zoom}
-        center={mapState.center as [number, number]}
-        scrollWheelZoom={true}
-        attributionControl={false} // We'll add a custom attribution control
-        // Adjust animation settings for mobile
-        fadeAnimation={!isMobile}
-        markerZoomAnimation={true}
-        easeLinearity={isMobile ? 0.3 : 0.25}
+        minZoom={1.5}
+        maxZoom={7}
+        worldCopyJump={true}
+        maxBoundsViscosity={1.0}
+        zoomSnap={0.5}
+        zoomDelta={0.5}
+        wheelDebounceTime={100}
+        tapTolerance={30}
+        bounceAtZoomLimits={false}
+        className="w-full h-full"
       >
-        {/* Add attribution control with small size */}
-        <AttributionControl position="bottomleft" prefix={false} />
-        
-        {/* Add zoom control with custom position */}
-        <ZoomControl position={isMobile ? "bottomright" : "topleft"} />
-        
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url={
-            stadiaApiKey
-              ? `https://tiles.stadiamaps.com/tiles/alidade_smooth${
-                resolvedTheme === "dark" ? "_dark" : ""
-              }/{z}/{x}/{y}{r}.png?api_key=${stadiaApiKey}`
-              : `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`
-          }
-        />
-        
-        <CustomMarkerCluster activities={activities} />
-        <MapEffects />
         <MapInitializer />
         
-        {/* Add the touch feedback overlay */}
-        <TouchFeedbackOverlay />
+        {/* Base OpenStreetMap layer */}
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+          opacity={0.9}
+        />
+        
+        {/* Labels layer */}
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
+          attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>"
+          subdomains="abcd"
+          maxZoom={20}
+          pane="labelsPane"
+          className="enhanced-labels"
+        />
+        
+        {/* Heatmap layer - conditionally rendered */}
+        {showHeatmap && initialized && (
+          <MapHeatLayer 
+            points={heatmapData}
+            pane="heatmapPane"
+            radius={25}
+            blur={15}
+            max={1.0}
+          />
+        )}
+        
+        {/* Marker cluster layer for grouped markers */}
+        {initialized && (
+          <MapClusterGroup
+            maxClusterRadius={40}
+            disableClusteringAtZoom={4}
+            animate={true}
+            spiderfyOnMaxZoom={true}
+            showCoverageOnHover={false}
+            zoomToBoundsOnClick={true}
+          >
+            {/* Activity markers */}
+            {processedActivities.map(activity => (
+              <SimpleMarker key={`marker-${activity.id}`} activity={activity} />
+            ))}
+          </MapClusterGroup>
+        )}
+        
+        {/* Add ZoomControl to the map */}
+        <ZoomControl position="bottomright" />
       </MapContainer>
+      
+      {/* Map overlays */}
+      <div className="absolute inset-0 pointer-events-none z-[1999] grid-effect" 
+        style={{
+          backgroundImage: "url('/grid-overlay.png')",
+          backgroundSize: "cover",
+          backgroundRepeat: "repeat",
+          mixBlendMode: "overlay",
+          opacity: 0.5
+        }}
+      />
+      
+      <div className="absolute inset-0 pointer-events-none z-[1998] scanline-effect" 
+        style={{
+          backgroundImage: "url('/scanline.gif')",
+          backgroundSize: "cover",
+          backgroundRepeat: "repeat",
+          mixBlendMode: "overlay",
+          opacity: 0.03
+        }}
+      />
+      
+      {/* Edge gradients */}
+      <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none z-[399] bg-gradient-to-b from-black/40 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none z-[399] bg-gradient-to-t from-black/40 to-transparent" />
+      <div className="absolute top-0 bottom-0 left-0 w-32 pointer-events-none z-[399] bg-gradient-to-r from-black/40 to-transparent" />
+      <div className="absolute top-0 bottom-0 right-0 w-32 pointer-events-none z-[399] bg-gradient-to-l from-black/40 to-transparent" />
+      
+      {/* Cyberpunk Styling */}
+      <div className="absolute inset-0 pointer-events-none z-[1997] cyberpunk-grid" />
+      <div className="absolute inset-0 pointer-events-none z-[1996] map-scanline" />
+      <div className="absolute inset-0 pointer-events-none z-[1995] map-glow-effect" 
+        style={{
+          boxShadow: "inset 0 0 100px rgba(6, 247, 247, 0.1), inset 0 0 30px rgba(148, 82, 245, 0.1)",
+          background: "radial-gradient(circle at 50% 50%, rgba(5, 15, 25, 0) 50%, rgba(5, 217, 254, 0.05) 100%)"
+        }}
+      />
+      
+      {/* Show legend if enabled */}
+      {showLegend && <MapLegend />}
+      
+      {/* Map controls */}
+      <MapControls />
+      
+      {/* Map styles */}
+      <MapEffects />
     </div>
   );
-}
-
-// Connect the overlay context to the window object
-function OverlayConnector() {
-  const { showOverlay } = useOverlay();
-  
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Store the showOverlay function in window object for marker clicks
-      window.showActivityOverlay = (action, id) => {
-        console.log("OverlayConnector: showing overlay for activity", id, "action:", action);
-        showOverlay(action as "view" | "edit", id);
-      };
-    }
-    
-    // Log on mount to confirm it's running
-    console.log("OverlayConnector mounted");
-    
-    return () => {
-      // Clean up on unmount
-      if (typeof window !== 'undefined') {
-        window.showActivityOverlay = undefined;
-      }
-      console.log("OverlayConnector unmounted");
-    };
-  }, [showOverlay]);
-  
-  return null;
 }
 
 // Export the MapClient component with proper SSR handling
@@ -1885,178 +1911,8 @@ const ClientOnlyMap = dynamic(
 );
 
 // Use dynamic import with ssr: false for the main component
-// Commented out to prevent duplicate default exports
-// export default dynamic(
-//   () => Promise.resolve(MapClientBase),
-//   {
-//     ssr: false,
-//     loading: () => (
-//       <div className="w-full h-full flex items-center justify-center bg-gray-900">
-//         <LoadingScreen />
-//       </div>
-//     )
-//   }
-// );
-
-// Import LoadingScreen and ErrorScreen components from earlier in the file
-function LoadingScreen() {
-  return (
-    <div className="w-full h-screen bg-gradient-to-b from-black via-black/90 to-black/80 flex flex-col items-center justify-center">
-      <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-full blur-2xl"></div>
-        <div className="h-16 w-16 rounded-full bg-gradient-to-r from-cyan-500 to-purple-600 animate-pulse flex items-center justify-center relative">
-          <Globe className="h-8 w-8 text-white animate-spin-slow" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ErrorScreen({ error }: { error: string }) {
-  return (
-    <div className="w-full h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
-      <div className="p-6 bg-gray-800 rounded-lg border border-red-500/50 shadow-lg shadow-red-500/20 max-w-md">
-        <h2 className="text-xl font-bold text-red-500 mb-2">Error Loading Map</h2>
-        <p className="text-gray-300">{error}</p>
-        <button 
-          onClick={() => window.location.reload()}
-          className="mt-4 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-500 rounded-md transition-colors"
-        >
-          Retry
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// Component to ensure Leaflet is loaded before rendering children
-function LeafletLoader({ children }: { children: React.ReactNode }) {
-  const { isLeafletLoaded, error } = useLeaflet();
-  
-  if (error) {
-    return <ErrorScreen error={error} />;
-  }
-  
-  if (!isLeafletLoaded) {
-    return <LoadingScreen />;
-  }
-  
-  return <>{children}</>;
-}
-
-// This function converts our internal Activity type to BaseActivity
-// for components that require the original type
-const convertToBaseActivity = (activity: Activity): BaseActivity => {
-  let photos: string[] = [];
-  
-  // Handle the photos field safely
-  if (activity.photos) {
-    try {
-      // If it's already a string array, use it directly
-      if (Array.isArray(activity.photos)) {
-        photos = activity.photos;
-      } 
-      // If it's a string and looks like a URL, use it directly
-      else if (typeof activity.photos === 'string') {
-        if (activity.photos.match(/^https?:\/\//i)) {
-        // It's a single URL, wrap it in an array
-        photos = [activity.photos];
-      } else {
-          // Try to parse as JSON
-          try {
-            const parsed = JSON.parse(activity.photos);
-            if (Array.isArray(parsed)) {
-              photos = parsed;
-            } else if (typeof parsed === 'string') {
-              photos = [parsed];
-            } else {
-              console.warn('Unexpected JSON format for photos:', parsed);
-          }
-        } catch (e) {
-          // If parsing fails, treat as a single string
-          photos = [activity.photos];
-            console.warn("Failed to parse photos string:", e);
-        }
-      }
-      }
-    } catch (e) {
-      console.error("Error processing photos:", e);
-      // Return empty array in case of error
-      photos = [];
-    }
-  }
-  
-  return {
-    id: activity.id,
-    lat: activity.lat,
-    lng: activity.lng,
-    country: activity.country,
-    address: activity.address,
-    type: activity.type,
-    title: activity.title,
-    responsible: activity.responsible,
-    description: activity.description,
-    photos: photos // Use the safely parsed photos array
-  };
-};
-
-// Add an ErrorBoundary component
-class MapErrorBoundary extends React.Component<
-  { children: React.ReactNode, fallback?: React.ReactNode },
-  { hasError: boolean, error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode, fallback?: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    // Update state so the next render will show the fallback UI
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log the error to an error reporting service
-    console.error("Map component error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      // You can render any custom fallback UI
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
-      
-      return (
-        <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white p-4">
-          <div className="text-center max-w-md">
-            <div className="mb-4 text-red-400 text-3xl">⚠️</div>
-            <h3 className="text-xl font-semibold mb-2">Map Error</h3>
-            <p className="mb-4">
-              {this.state.error?.message || "An unexpected error occurred in the map component"}
-            </p>
-            <button 
-              className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-500 rounded-md transition-colors"
-              onClick={() => window.location.reload()}
-            >
-              Reload Page
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-// Update the export to wrap MapClientBase in MapErrorBoundary
 export default dynamic(
-  () => Promise.resolve((props: MapClientProps) => (
-    <MapErrorBoundary fallback={<ErrorScreen error="An error occurred in the map component" />}>
-      <MapClientBase {...props} />
-    </MapErrorBoundary>
-  )),
+  () => Promise.resolve(MapClientBase),
   {
     ssr: false,
     loading: () => (

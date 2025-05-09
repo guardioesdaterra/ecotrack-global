@@ -63,8 +63,8 @@ const nextConfig = {
               default-src 'self';
               script-src 'self' 'unsafe-eval' 'unsafe-inline' unpkg.com;
               style-src 'self' 'unsafe-inline' unpkg.com;
-              img-src 'self' data: blob: unpkg.com images.unsplash.com uploadthing.com utfs.io *.tile.openstreetmap.org *.googleusercontent.com stamen-tiles-a.a.ssl.fastly.net stamen-tiles-b.a.ssl.fastly.net stamen-tiles-c.a.ssl.fastly.net stamen-tiles-d.a.ssl.fastly.net *.basemaps.cartocdn.com oqzuskgsgufbntufufcz.supabase.co *.supabase.co;
-              connect-src 'self' ws: wss: https://api.supabase.io ${process.env.NEXT_PUBLIC_SUPABASE_URL || ''} https://*.basemaps.cartocdn.com https://*.ssl.fastly.net oqzuskgsgufbntufufcz.supabase.co *.supabase.co;
+              img-src 'self' data: blob: unpkg.com images.unsplash.com uploadthing.com utfs.io *.tile.openstreetmap.org *.googleusercontent.com stamen-tiles-a.a.ssl.fastly.net stamen-tiles-b.a.ssl.fastly.net stamen-tiles-c.a.ssl.fastly.net stamen-tiles-d.a.ssl.fastly.net *.basemaps.cartocdn.com oqzuskgsgufbntufufcz.supabase.co *.supabase.co *.stamen.com stadia.com *.tiles.stadiamaps.com *.stamen.io *.stadia.io *.mapbox.com *.opentopomap.org *.openweathermap.org cdn.leafletjs.com *.stamen.com *.arcgisonline.com;
+              connect-src 'self' ws: wss: https://api.supabase.io ${process.env.NEXT_PUBLIC_SUPABASE_URL || ''} https://*.basemaps.cartocdn.com https://*.ssl.fastly.net oqzuskgsgufbntufufcz.supabase.co *.supabase.co *.tiles.stadiamaps.com *.stamen.com api.stadiamaps.com api.mapbox.com api.opentopomap.org api.openweathermap.org;
             `.replace(/\s{2,}/g, ' ').trim()
           },
           {

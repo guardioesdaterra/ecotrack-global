@@ -58,23 +58,142 @@ Object.defineProperty(window, 'matchMedia', {
 class MockIntersectionObserver {
   constructor(callback) {
     this.callback = callback;
+    this.elements = new Set();
+    this.mockEntries = [];
   }
-  observe = jest.fn();
-  unobserve = jest.fn();
-  disconnect = jest.fn();
+  
+  observe(element) {
+    this.elements.add(element);
+    this.mockEntries.push({
+      target: element,
+      isIntersecting: false,
+      boundingClientRect: { top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0 },
+      intersectionRatio: 0,
+      intersectionRect: { top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0 },
+      rootBounds: null,
+      time: Date.now(),
+    });
+  }
+  
+  unobserve(element) {
+    this.elements.delete(element);
+    this.mockEntries = this.mockEntries.filter(entry => entry.target !== element);
+  }
+  
+  disconnect() {
+    this.elements.clear();
+    this.mockEntries = [];
+  }
+  
+  // Helper method to trigger intersections
+  triggerIntersection(isIntersecting) {
+    this.mockEntries.forEach(entry => {
+      entry.isIntersecting = isIntersecting;
+    });
+    this.callback(this.mockEntries, this);
+  }
 }
-window.IntersectionObserver = MockIntersectionObserver;
+
+global.IntersectionObserver = MockIntersectionObserver;
 
 // Mock ResizeObserver
 class MockResizeObserver {
   constructor(callback) {
     this.callback = callback;
+    this.elements = new Set();
+    this.mockEntries = [];
   }
-  observe = jest.fn();
-  unobserve = jest.fn();
-  disconnect = jest.fn();
+  
+  observe(element) {
+    this.elements.add(element);
+    this.mockEntries.push({
+      target: element,
+      contentRect: { width: 100, height: 100 },
+    });
+  }
+  
+  unobserve(element) {
+    this.elements.delete(element);
+    this.mockEntries = this.mockEntries.filter(entry => entry.target !== element);
+  }
+  
+  disconnect() {
+    this.elements.clear();
+    this.mockEntries = [];
+  }
+  
+  // Helper method to trigger resize
+  triggerResize(width = 100, height = 100) {
+    this.mockEntries.forEach(entry => {
+      entry.contentRect = { width, height };
+    });
+    this.callback(this.mockEntries, this);
+  }
 }
-window.ResizeObserver = MockResizeObserver;
+
+global.ResizeObserver = MockResizeObserver;
+
+// Mock Touch events
+class Touch {
+  constructor(options) {
+    Object.assign(this, options);
+  }
+}
+
+global.Touch = Touch;
+
+class TouchEvent extends Event {
+  constructor(type, options = {}) {
+    super(type, options);
+    this.touches = options.touches || [];
+    this.targetTouches = options.targetTouches || [];
+    this.changedTouches = options.changedTouches || [];
+  }
+}
+
+global.TouchEvent = TouchEvent;
+
+// Mock window.matchMedia for responsive design testing
+window.matchMedia = jest.fn().mockImplementation(query => {
+  return {
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(),
+    removeListener: jest.fn(),
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  };
+});
+
+// Mock Leaflet global L object if window.L is accessed directly
+global.L = require('./__mocks__/leaflet');
+
+// Mock window.scrollTo
+window.scrollTo = jest.fn();
+
+// Mock window.URL.createObjectURL and revokeObjectURL
+if (window.URL) {
+  window.URL.createObjectURL = jest.fn(() => 'mock-object-url');
+  window.URL.revokeObjectURL = jest.fn();
+}
+
+// Add animejs mock
+jest.mock('animejs', () => {
+  return jest.fn().mockImplementation((params) => {
+    return {
+      play: jest.fn(),
+      pause: jest.fn(),
+      restart: jest.fn(),
+      seek: jest.fn(),
+      completed: false,
+      began: true,
+      paused: false,
+      progress: 0,
+    };
+  });
+});
 
 // Suppress console errors during tests
 const originalConsoleError = console.error;

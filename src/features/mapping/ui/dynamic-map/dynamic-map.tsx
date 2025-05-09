@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useViewport } from '@/lib/store/app-store';
+import type { Map as LeafletMap } from 'leaflet';
 
 // Define types for props
 export interface DynamicMapProps {
@@ -29,7 +30,7 @@ export interface DynamicMapProps {
   /**
    * Callback when map is ready
    */
-  onMapReady?: (map: any) => void;
+  onMapReady?: (map: LeafletMap) => void;
   /**
    * Whether to use dark mode styles
    */
@@ -49,6 +50,9 @@ const MapPlaceholder = ({ className }: { className?: string }) => {
     </div>
   );
 };
+
+// Type for the dynamically loaded component
+type DynamicMapComponentType = React.ComponentType<DynamicMapProps & { children?: React.ReactNode }>;
 
 /**
  * Dynamic Leaflet map component
@@ -72,10 +76,13 @@ export function DynamicMap({
   // Protect against SSR hydration issues with dynamic import
   const MapComponent = React.useMemo(
     () =>
-      dynamic(() => import('./map-component'), {
-        loading: () => <MapPlaceholder className={className} />,
-        ssr: false, // Disable server-side rendering
-      }),
+      dynamic(
+        () => import('./map-component'), 
+        {
+          loading: () => <MapPlaceholder className={className} />,
+          ssr: false, // Disable server-side rendering
+        }
+      ) as DynamicMapComponentType,
     [className]
   );
 

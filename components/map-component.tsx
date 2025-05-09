@@ -6,7 +6,7 @@ export interface Activity {
   lat: number
   lng: number
   country?: string
-  adress?: string
+  address?: string
   type: string
   title: string
   responsible?: string

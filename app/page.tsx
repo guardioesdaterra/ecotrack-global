@@ -170,7 +170,7 @@ export default function Home() {
             lat: item.latitude || 0,
             lng: item.longitude || 0,
             country: item.country || 'Unknown',
-            adress: item.city ? `${item.city}, ${item.country || ''}` : undefined,
+            address: item.city ? `${item.city}, ${item.country || ''}` : undefined,
             responsible: item.responsible || 'Unknown',
             photos: item.photos === null ? undefined : item.photos
           };
@@ -205,7 +205,7 @@ export default function Home() {
                 lat: item.lat || 0,
                 lng: item.lng || 0,
                 country: item.country || 'Unknown',
-                adress: item.adress,
+                address: item.address,
                 responsible: item.responsible || 'Unknown',
                 photos: item.photos === null ? undefined : item.photos
               }));
@@ -498,7 +498,7 @@ export default function Home() {
               {/* Mobile Globe - ensure z-index for interactivity */}
               {isMobile && (
                 <motion.div 
-                  className="fixed top-0 bottom-0 flex items-center"
+                  className="fixed inset-0 m-auto flex items-center justify-center"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.7, delay: 0.8 }}

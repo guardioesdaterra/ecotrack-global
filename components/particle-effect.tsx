@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState, useMemo } from "react"
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { Activity as BaseActivity, getActivityColor } from "@/components/map-component"
 import anime from "animejs/lib/anime.es.js"
 
@@ -77,16 +77,38 @@ function shuffleArray<T>(array: T[]): T[] {
   return array;
 }
 
-// Função para limitar a frequência de execução (throttle)
-function throttle(callback: Function, limit: number): (...args: any[]) => void {
-  let waiting = false;
-  return function(this: any, ...args: any[]): void {
-    if (!waiting) {
-      callback.apply(this, args);
-      waiting = true;
-      setTimeout(function() {
-        waiting = false;
+// Add a more efficient throttle function with proper types
+function throttle<T extends (...args: any[]) => void>(
+  func: T,
+  limit: number
+): (...args: Parameters<T>) => void {
+  let inThrottle = false;
+  let lastFunc: ReturnType<typeof setTimeout> | null = null;
+  let lastRan = 0;
+  
+  return function(this: any, ...args: Parameters<T>): void {
+    if (!inThrottle) {
+      func.apply(this, args);
+      lastRan = Date.now();
+      inThrottle = true;
+      
+      setTimeout(() => {
+        inThrottle = false;
       }, limit);
+    } else {
+      // Clear previous setTimeout if it exists
+      if (lastFunc) {
+        clearTimeout(lastFunc);
+      }
+      
+      // Set a new setTimeout
+      lastFunc = setTimeout(() => {
+        // Only run if enough time has passed since last run
+        if (Date.now() - lastRan >= limit) {
+          func.apply(this, args);
+          lastRan = Date.now();
+        }
+      }, limit - (Date.now() - lastRan));
     }
   };
 }
@@ -279,12 +301,16 @@ const initCanvasLayer = () => {
 };
 
 export function ParticleEffect({ activities, map }: { activities: Activity[], map: L.Map }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const layerRef = useRef<any>(null);
   const particlesRef = useRef<Particle[]>([]);
   const connectionsRef = useRef<Connection[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationRef = useRef<anime.AnimeInstance | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const frameRef = useRef<number | null>(null);
+  const isUnmountingRef = useRef<boolean>(false);
 
   // Create container for particles
   useEffect(() => {
@@ -363,6 +389,8 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
     
     // Clean up on unmount
     return () => {
+      isUnmountingRef.current = true;
+      
       if (containerRef.current && containerRef.current.parentNode) {
         containerRef.current.parentNode.removeChild(containerRef.current);
       }
@@ -476,6 +504,42 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
     setIsInitialized(true);
     
   }, [map, activities]);
+
+  // Create a more efficient redraw function
+  const redrawThrottled = useMemo(() => 
+    throttle(() => {
+      if (isUnmountingRef.current || !map) return;
+      try {
+        if (canvasRef.current && layerRef.current) {
+          layerRef.current._reset();
+        }
+      } catch (e) {
+        console.warn('Error in throttled redraw:', e);
+      }
+    }, 100), 
+    [map]
+  );
+
+  // Use a more efficient animation frame handler
+  const updateParticlePositions = useCallback((timestamp: number) => {
+    if (isUnmountingRef.current) return;
+    
+    // Process animations with less frequency on slower devices or when many particles
+    const particleCount = particlesRef.current.length;
+    const processingLoad = particleCount > 100 ? 'high' : particleCount > 50 ? 'medium' : 'low';
+    const skipFrames = processingLoad === 'high' ? 2 : processingLoad === 'medium' ? 1 : 0;
+    
+    // Skip frames based on processing load
+    if (skipFrames > 0 && timestamp % skipFrames !== 0) {
+      animationFrameRef.current = requestAnimationFrame(updateParticlePositions);
+      return;
+    }
+    
+    // Rest of animation code...
+    
+    // Use ref for the animation frame ID
+    animationFrameRef.current = requestAnimationFrame(updateParticlePositions);
+  }, []);
 
   // Animate particles using direct requestAnimationFrame
   useEffect(() => {
@@ -688,6 +752,39 @@ export function ParticleEffect({ activities, map }: { activities: Activity[], ma
       map.off('viewreset', handleMapMove);
     };
   }, [map, isInitialized]);
+
+  // Ensure proper cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isUnmountingRef.current = true;
+      
+      // Cancel any pending animation frames
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      // Remove any listeners
+      if (map) {
+        try {
+          map.off('move', redrawThrottled);
+          map.off('zoom', redrawThrottled);
+          map.off('resize', redrawThrottled);
+        } catch (e) {
+          console.warn('Error removing map listeners:', e);
+        }
+      }
+      
+      // Remove the canvas layer if it exists
+      if (layerRef.current && map) {
+        try {
+          map.removeLayer(layerRef.current);
+        } catch (e) {
+          console.warn('Error removing canvas layer:', e);
+        }
+      }
+    };
+  }, [map, redrawThrottled]);
 
   return null;
 }

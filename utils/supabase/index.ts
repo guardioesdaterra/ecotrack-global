@@ -7,6 +7,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { Database } from '@/types/supabase'
 import { SupabaseClient } from '@supabase/supabase-js'
 import type { GetServerSidePropsContext } from 'next'
+import { fetchWithRetry } from '@/utils/fetchWithRetry'
 
 // Environment variables validation
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -155,55 +156,100 @@ export async function createActivity(activityData: any) {
 }
 
 /**
- * Fetch activities with client-side caching
+ * Fetch activities with client-side caching and retry mechanism
  */
 export async function fetchActivities(limit: number = 50): Promise<any[]> {
-  try {
-    const supabase = createBrowserSupabaseClient()
-    
-    const { data, error } = await supabase
-      .from('ecotrack')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit)
+  return fetchWithRetry(
+    async () => {
+      const supabase = createBrowserSupabaseClient()
+      
+      const { data, error } = await supabase
+        .from('ecotrack')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
 
-    if (error) {
-      throw new Error(`Failed to fetch activities: ${error.message}`)
+      if (error) {
+        throw error
+      }
+
+      return data || []
+    },
+    {
+      maxRetries: 3,
+      initialDelay: 1000,
+      backoffFactor: 2,
+      shouldRetry: (error) => {
+        // Retry on network errors, timeouts, or specific Supabase errors
+        if (!error) return false;
+        
+        // PostgresError or other database errors
+        if (error.code && ['08006', '08001', '08004', '57P01'].includes(error.code)) {
+          return true; // Connection errors
+        }
+        
+        // Rate limiting or service unavailable
+        if (error.status && [429, 503, 504].includes(error.status)) {
+          return true;
+        }
+        
+        // Network-related errors
+        if (error.message && (
+          error.message.includes('network') || 
+          error.message.includes('timeout') ||
+          error.message.includes('connection')
+        )) {
+          return true;
+        }
+        
+        return false;
+      },
+      onRetry: (attempt, delay, error) => {
+        console.warn(`Retrying fetchActivities (${attempt}/3) after ${delay}ms due to:`, 
+          error.message || error.code || 'Unknown error');
+      }
     }
-
-    return data || []
-  } catch (error) {
-    console.error('Error fetching activities:', error)
-    return []
-  }
+  ).catch(error => {
+    console.error('All retry attempts for fetchActivities failed:', error);
+    return [];
+  });
 }
 
 /**
- * Server-side fetch for activities (used in Server Components)
+ * Server-side fetch for activities with retry mechanism
  */
 export async function fetchActivitiesServer(
   limit: number = 50,
   context?: GetServerSidePropsContext
 ): Promise<any[]> {
-  try {
-    const supabase = await createServerSupabaseClient(context)
-    
-    const { data, error } = await supabase
-      .from('ecotrack')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit)
+  return fetchWithRetry(
+    async () => {
+      const supabase = await createServerSupabaseClient(context)
       
-    if (error) {
-      console.error('Error fetching activities on server:', error)
-      return []
+      const { data, error } = await supabase
+        .from('ecotrack')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+        
+      if (error) {
+        throw error
+      }
+      
+      return data || []
+    },
+    {
+      maxRetries: 3,
+      initialDelay: 1000,
+      backoffFactor: 2,
+      onRetry: (attempt, delay, error) => {
+        console.warn(`Retrying server-side fetchActivities (${attempt}/3) after ${delay}ms`);
+      }
     }
-    
-    return data || []
-  } catch (error) {
-    console.error('Server fetch error:', error)
-    return []
-  }
+  ).catch(error => {
+    console.error('All retry attempts for server-side fetchActivities failed:', error);
+    return [];
+  });
 }
 
 /**

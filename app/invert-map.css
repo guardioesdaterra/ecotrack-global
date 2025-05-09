@@ -191,7 +191,10 @@ html, body, #__next, main {
 }
 
 .leaflet-container.inverted-map .leaflet-bar a:hover {
-  background-color: #f4f4f4;
+  background-color: #fff;
+  transform: none;
+  filter: none;
+  transition: none;
 }
 
 /* Adjust popup shadows after inversion */
